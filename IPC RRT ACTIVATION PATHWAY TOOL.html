@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPC RRT ACTIVATION PATHWAY TOOL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal-900:#0b3d33;
+    --teal-700:#0f6e5d;
+    --teal-600:#138a74;
+    --mint-50:#f2f8f6;
+    --mint-100:#e3f1ec;
+    --ink:#1b2b28;
+    --ink-soft:#5b6b67;
+    --line:#d8e7e2;
+    --amber:#b5762a;
+    --amber-bg:#fbf1e3;
+    --red:#a3342b;
+    --red-bg:#faeae8;
+    --gray-bg:#eef0f0;
+    --white:#ffffff;
+    --radius:14px;
+    --shadow:0 10px 30px -12px rgba(11,61,51,.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'IBM Plex Sans Arabic', sans-serif;
+    background:var(--mint-50);
+    color:var(--ink);
+    min-height:100vh;
+    padding:28px 16px 60px;
+  }
+  .wrap{max-width:720px;margin:0 auto;}
+
+  .masthead{
+    display:flex;align-items:center;gap:12px;margin-bottom:22px;
+  }
+  .masthead .mark{
+    width:40px;height:40px;border-radius:10px;
+    background:linear-gradient(155deg,var(--teal-600),var(--teal-900));
+    flex:none;position:relative;
+  }
+  .masthead .mark::after{
+    content:"";position:absolute;inset:9px;
+    border:2px solid rgba(255,255,255,.85);border-radius:5px;
+  }
+  .masthead h1{font-size:16px;font-weight:600;margin:0;color:var(--teal-900);line-height:1.5;}
+  .masthead p{margin:2px 0 0;font-size:12.5px;color:var(--ink-soft);}
+
+  .progress{display:flex;gap:6px;margin-bottom:22px;}
+  .progress span{flex:1;height:4px;border-radius:3px;background:var(--line);transition:background .3s;}
+  .progress span.done{background:var(--teal-600);}
+
+  .card{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:24px 22px;
+    margin-bottom:16px;
+  }
+  .step-label{
+    font-size:11.5px;font-weight:600;color:var(--teal-700);
+    letter-spacing:.02em;margin-bottom:6px;
+  }
+  .step-title{font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);}
+  .step-hint{font-size:13px;color:var(--ink-soft);margin:0 0 18px;}
+
+  .search{
+    width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:10px;
+    font-family:inherit;font-size:14px;margin-bottom:12px;background:var(--mint-50);
+    outline:none;transition:border-color .15s;
+  }
+  .search:focus{border-color:var(--teal-600);}
+
+  .list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-left:2px;}
+  .option{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+    cursor:pointer;font-size:14px;background:var(--white);transition:.15s;
+    text-align:right;
+  }
+  .option:hover{border-color:var(--teal-600);background:var(--mint-50);}
+  .option.selected{border-color:var(--teal-700);background:var(--mint-100);font-weight:600;}
+  .option .tag{font-size:10.5px;color:var(--teal-700);background:var(--mint-100);padding:2px 8px;border-radius:20px;flex:none;}
+
+  .choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .choice{
+    padding:18px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;
+    text-align:center;font-weight:600;font-size:14.5px;background:var(--white);transition:.15s;
+  }
+  .choice:hover{border-color:var(--teal-600);}
+  .choice.selected{border-color:var(--teal-700);background:var(--mint-100);color:var(--teal-900);}
+  .choice small{display:block;font-weight:400;font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+
+  .checklist{display:flex;flex-direction:column;gap:8px;}
+  .check-row{
+    display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+    border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--white);
+    transition:.15s;
+  }
+  .check-row:hover{border-color:var(--teal-600);}
+  .check-row.checked{border-color:var(--amber);background:var(--amber-bg);}
+  .check-row input{margin-top:3px;accent-color:var(--teal-700);flex:none;}
+  .check-row label{font-size:13.5px;line-height:1.55;cursor:pointer;}
+
+  .nav{display:flex;gap:10px;margin-top:18px;}
+  .btn{
+    font-family:inherit;font-size:14px;font-weight:600;border-radius:10px;
+    padding:11px 18px;border:none;cursor:pointer;transition:.15s;
+  }
+  .btn-primary{background:var(--teal-700);color:#fff;flex:1;}
+  .btn-primary:disabled{background:#b9cfc9;cursor:not-allowed;}
+  .btn-primary:not(:disabled):hover{background:var(--teal-900);}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--ink-soft);}
+
+  .result-badge{
+    display:inline-block;font-size:12px;font-weight:700;padding:5px 14px;
+    border-radius:20px;margin-bottom:12px;
+  }
+  .result-title{font-size:21px;font-weight:700;margin:0 0 10px;line-height:1.4;}
+  .result-desc{font-size:14px;line-height:1.9;color:var(--ink);margin-bottom:16px;}
+  .actions{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;}
+  .actions li{
+    font-size:13.5px;line-height:1.7;padding:10px 12px;border-radius:9px;
+    background:var(--mint-50);border-right:3px solid var(--teal-600);
+  }
+  .r-direct .result-badge{background:var(--red-bg);color:var(--red);}
+  .r-direct{border-color:var(--red);}
+  .r-remote .result-badge{background:var(--mint-100);color:var(--teal-700);}
+  .r-conditional .result-badge{background:var(--amber-bg);color:var(--amber);}
+  .r-none .result-badge{background:var(--gray-bg);color:var(--ink-soft);}
+
+  .meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+  .chip{font-size:11.5px;background:var(--mint-50);color:var(--teal-900);padding:5px 10px;border-radius:20px;border:1px solid var(--line);}
+
+  .footnote{font-size:11.5px;color:var(--ink-soft);margin-top:14px;line-height:1.7;border-top:1px dashed var(--line);padding-top:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="mark"></div>
+    <div>
+      <h1>IPC RRT ACTIVATION PATHWAY TOOL</h1>
+      <p>أداة مساعدة للقرار — مسار تفعيل فرق الاستجابة السريعة لمكافحة العدوى</p>
+    </div>
+  </div>
+
+  <div class="progress" id="progress"></div>
+
+  <div id="app"></div>
+
+</div>
+
+<script>
+// ---------------- DATA ----------------
+
+// Group A: تُدرج ضمن المسار المباشر عند التأكيد، وضمن مسار "عن بُعد" عند الاشتباه
+const groupA = [
+  {id:"lassa", name:"حمى لاسا (Lassa Fever)", remote:true},
+  {id:"marburg", name:"مرض فيروس ماربورغ (Marburg Virus Disease)", remote:true},
+  {id:"ebola", name:"مرض فيروس إيبولا (EVD)", remote:true},
+  {id:"plague_p", name:"الطاعون الرئوي (Plague – Pneumonic)", remote:true},
+  {id:"nipah", name:"عدوى فيروس نيباه (Nipah Virus Infection)", remote:true},
+  {id:"cchf", name:"حمى القرم والكونغو النزفية (CCHF)", remote:true},
+  {id:"smallpox", name:"الجدري (Smallpox / Variola)", remote:true},
+  {id:"plague_b", name:"الطاعون الدبلي (Plague – Bubonic)", remote:true},
+  {id:"avian_flu", name:"إنفلونزا الطيور A (H5N1/H7N9)", remote:true},
+  {id:"mers", name:"متلازمة الشرق الأوسط التنفسية (MERS-CoV)", remote:false},
+  {id:"novel_flu", name:"إنفلونزا مستجدة (Novel Influenza)", remote:true},
+  {id:"hantavirus", name:"متلازمة هانتا فيروس الرئوية (Hantavirus Pulmonary Syndrome)", remote:true},
+];
+
+// حالة خاصة: تُدرج فقط ضمن مسار "عن بُعد" عند الاشتباه (سبب غير معروف)
+const remoteOnly = [
+  {id:"vhf_unknown", name:"حمى نزفية فيروسية مجهولة السبب (Viral Hemorrhagic Fever – Unknown Etiology)"}
+];
+
+// Group B: تُدرج ضمن المسار المشروط عند التأكيد + وجود مؤشر تصعيد واحد على الأقل
+const groupB = [
+  {id:"anthrax", name:"الجمرة الخبيثة (Anthrax)"},
+  {id:"covid", name:"كوفيد-19 (COVID-19 / SARS-CoV-2)"},
+  {id:"sars", name:"المتلازمة التنفسية الحادة الوخيمة (SARS)"},
+  {id:"dengue", name:"حمى الضنك (Dengue Virus Infection)"},
+  {id:"rvf", name:"حمى الوادي المتصدع (Rift Valley Fever)"},
+  {id:"tb", name:"السل المقاوم للأدوية (MDR-TB / XDR-TB)"},
+  {id:"yellow", name:"الحمى الصفراء (Yellow Fever)"},
+  {id:"measles", name:"الحصبة (Measles / Rubeola)"},
+  {id:"arboviral", name:"عدوى فيروسية منقولة بالمفصليات (فيروس غرب النيل أو غير محددة)"},
+  {id:"diphtheria", name:"الدفتيريا (Diphtheria)"},
+  {id:"alkhurma", name:"حمى الخرمة النزفية (Alkhurma Hemorrhagic Fever)"},
+  {id:"zika", name:"عدوى فيروس زيكا (Zika Virus Infection)"},
+  {id:"mpox_1b", name:"جدري القردة – السلالة Clade Ib (Mpox Clade Ib)"},
+  {id:"mpox", name:"جدري القردة (Mpox)"},
+  {id:"chikungunya", name:"عدوى فيروس شيكونغونيا (Chikungunya)"},
+];
+
+const indicators = [
+  {id:"delay", text:"تأخر اكتشاف الحالة أو تطبيق العزل والاحتياطات المطلوبة"},
+  {id:"exposure", text:"حدوث مخالطة أو تعرّض غير محمي أو عالي الخطورة داخل المنشأة الصحية (يشمل تعرض المرضى أو الممارسين الصحيين قبل عزل الحالة)"},
+  {id:"dept", text:"وجود الحالة أو التعرّضات المرتبطة بها في قسم عالي الخطورة"},
+  {id:"ica", text:"ضعف جاهزية برنامج مكافحة العدوى — عدم تحديث بيانات التقييم الذاتي، أو انخفاض نتيجة التقييم الإشرافي (ICA) عن 85٪"},
+  {id:"aerosol", text:"تنفيذ إجراء مولّد للرذاذ مرتبط بالحالة دون الاستخدام الصحيح لمعدات الوقاية الشخصية"},
+  {id:"containment", text:"وجود قصور في تطبيق تدابير الاحتواء، أو عدم قدرة المنشأة على إدارة الحدث بكفاءة"},
+  {id:"support", text:"الحاجة إلى دعم فني عاجل أو تقييم ميداني بناءً على نتائج تقييم المخاطر"},
+];
+
+const allDiseases = [
+  ...groupA.map(d=>({...d, group:"A"})),
+  ...remoteOnly.map(d=>({...d, group:"remoteOnly"})),
+  ...groupB.map(d=>({...d, group:"B"})),
+].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+
+// ---------------- STATE ----------------
+let state = {
+  step: 1,
+  disease: null,
+  status: null, // "suspected" | "confirmed"
+  checks: {},
+  showResult: false
+};
+
+const totalSteps = 3; // step 3 either shows checklist+result or result directly
+
+function needsChecklist(){
+  if(!state.disease || state.disease.group!=="B") return false;
+  return state.status === "confirmed";
+}
+
+function render(){
+  renderProgress();
+  const app = document.getElementById('app');
+  if(state.step===1) app.innerHTML = renderStep1();
+  else if(state.step===2) app.innerHTML = renderStep2();
+  else app.innerHTML = renderStep3();
+  attachHandlers();
+}
+
+function renderProgress(){
+  const bars = [1,2,3].map(i=>`<span class="${state.step>=i?'done':''}"></span>`).join('');
+  document.getElementById('progress').innerHTML = bars;
+}
+
+function renderStep1(){
+  const items = allDiseases.map(d=>{
+    const sel = state.disease && state.disease.id===d.id ? 'selected':'';
+    let tag = d.group==="A" ? "مباشر / عن بُعد" : d.group==="B" ? "مشروط" : "عن بُعد فقط";
+    return `<div class="option ${sel}" data-id="${d.id}">
+      <span>${d.name}</span><span class="tag">${tag}</span>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="card">
+    <div class="step-label">الخطوة ١ من ٣</div>
+    <h2 class="step-title">اختر المرض</h2>
+    <p class="step-hint">ابحث عن اسم المرض أو مرّر القائمة لاختياره.</p>
+    <input class="search" id="searchBox" placeholder="اكتب اسم المرض...">
+    <div class="list" id="diseaseList">${items}</div>
+  </div>`;
+}
+
+function renderStep2(){
+  const d = state.disease;
+  const canSuspect = d.group==="A" ? d.remote : (d.group==="remoteOnly");
+  const canConfirm = d.group==="A" || d.group==="B";
+
+  return `
+  <div class="card">
+    <div class="step-label">الخطوة ٢ من ٣</div>
+    <h2 class="step-title">${d.name}</h2>
+    <p class="step-hint">ما حالة التصنيف الحالية لهذه الحالة؟</p>
+    <div class="choice-grid">
+      <div class="choice ${!canSuspect?'':''} ${state.status==='suspected'?'selected':''}" data-status="suspected" style="${canSuspect?'':'opacity:.4;pointer-events:none;'}">
+        مشتبهة
+        <small>لم تُؤكد مخبريًا بعد</small>
+      </div>
+      <div class="choice ${state.status==='confirmed'?'selected':''}" data-status="confirmed" style="${canConfirm?'':'opacity:.4;pointer-events:none;'}">
+        مؤكدة
+        <small>تم تأكيد التشخيص</small>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="btn btn-ghost" id="backBtn">رجوع</button>
+      <button class="btn btn-primary" id="nextBtn" ${state.status?'':'disabled'}>متابعة</button>
+    </div>
+  </div>`;
+}
+
+function renderStep3(){
+  if(needsChecklist() && Object.keys(state.checks).length===0){
+    // ensure defaults
+    indicators.forEach(i=>{ if(!(i.id in state.checks)) state.checks[i.id]=false; });
+  }
+
+  if(needsChecklist()){
+    const rows = indicators.map(i=>{
+      const checked = state.checks[i.id];
+      return `<div class="check-row ${checked?'checked':''}" data-id="${i.id}">
+        <input type="checkbox" ${checked?'checked':''} readonly>
+        <label>${i.text}</label>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="card">
+      <div class="step-label">الخطوة ٣ من ٣</div>
+      <h2 class="step-title">مؤشرات التصعيد</h2>
+      <p class="step-hint">هذا المرض مؤكد ويندرج ضمن مسار "التفعيل المشروط". حدّد أي مؤشرات تصعيد متحققة حاليًا:</p>
+      <div class="checklist">${rows}</div>
+      <div class="nav">
+        <button class="btn btn-ghost" id="backBtn">رجوع</button>
+        <button class="btn btn-primary" id="resultBtn">عرض النتيجة</button>
+      </div>
+    </div>
+    ${state.showResult ? renderResultCard() : ""}`;
+  }
+
+  return `
+  <div class="card">
+    <div class="step-label">النتيجة</div>
+  </div>
+  ${renderResultCard()}
+  <div class="nav">
+    <button class="btn btn-ghost" id="backBtn" style="flex:1">تعديل الاختيار</button>
+    <button class="btn btn-primary" id="resetBtn" style="flex:1">حالة جديدة</button>
+  </div>`;
+}
+
+function computeResult(){
+  const d = state.disease;
+  if(!d) return null;
+
+  if(d.group==="A" && state.status==="confirmed"){
+    return {
+      type:"direct",
+      title:"التفعيل المباشر",
+      desc:"يُفعَّل فريق الاستجابة السريعة لمكافحة العدوى فور تأكيد هذه الحالة، دون اشتراط تحقق مؤشرات تصعيد إضافية. يبدأ التفعيل بالتنسيق الفوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع.",
+      chips:["تنسيق فوري","بدون اشتراط مؤشرات إضافية","نطاق يُحدَّد وفق تقييم المخاطر"],
+      actions:[
+        "تنسيق فوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع",
+        "التحقق من تطبيق تدابير العزل والاحتواء",
+        "تقييم التعرضات المحتملة",
+        "تحديد الدعم المطلوب ونطاق التدخل الميداني",
+        "تحديد نطاق التدخل والمشاركة وفق نتائج تقييم المخاطر وتوجيه المقر الرئيسي"
+      ]
+    };
+  }
+
+  if(d.group==="A" && state.status==="suspected" && d.remote){
+    return {
+      type:"remote",
+      title:"التفعيل عن بُعد",
+      desc:"يُفعَّل الفريق عن بُعد عند الإبلاغ عن حالة مشتبهة لإجراء تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة، والتحقق من تطبيق تدابير العزل والاحتواء. يستمر هذا المسار حتى استبعاد الحالة أو تأكيدها والانتقال إلى مسارها المحدد، أو صدور توجيه آخر من المقر الرئيسي.",
+      chips:["تقييم عاجل عن بُعد","يستمر حتى الاستبعاد أو التأكيد"],
+      actions:[
+        "تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة الصحية",
+        "التحقق من تطبيق تدابير العزل والاحتواء",
+        "مراجعة التعرضات المحتملة وجاهزية المنشأة",
+        "تحديد الحاجة إلى تدخل ميداني أو تصعيد مسار التفعيل"
+      ]
+    };
+  }
+
+  if(d.group==="remoteOnly" && state.status==="suspected"){
+    return {
+      type:"remote",
+      title:"التفعيل عن بُعد",
+      desc:"تندرج الحمى النزفية الفيروسية مجهولة السبب ضمن مسار التفعيل عن بُعد عند الاشتباه. يستمر التفعيل حتى استبعاد الحالة، أو تحديد المسبب وتأكيد التشخيص والانتقال إلى مساره المحدد.",
+      chips:["تقييم عاجل عن بُعد","بانتظار تحديد المسبب"],
+      actions:[
+        "تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة الصحية",
+        "التحقق من تطبيق تدابير العزل والاحتواء",
+        "متابعة نتائج التحاليل لتحديد المسبب",
+        "بمجرد تحديد المسبب، إعادة تصنيف الحالة باسمها المؤكد لتحديد المسار الصحيح"
+      ]
+    };
+  }
+
+  if(d.group==="B" && state.status==="confirmed"){
+    const checkedList = indicators.filter(i=>state.checks[i.id]);
+    if(checkedList.length>0){
+      return {
+        type:"direct",
+        title:"التفعيل المباشر",
+        desc:"الحالة مؤكدة وتحقق مؤشر تصعيد واحد أو أكثر، وهو ما يستوجب التفعيل المشروط للفريق. يبدأ التفعيل بالتنسيق الفوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع.",
+        chips: checkedList.map(i=>"✓ "+i.text.split("—")[0].split("،")[0].trim()),
+        actions:[
+          "تنسيق فوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع",
+          "التحقق من تطبيق تدابير العزل والاحتواء",
+          "مراجعة حجم التعرضات وقدرة المنشأة على إدارة الحدث",
+          "تحديد الدعم الفني أو التدخل الميداني اللازم بناءً على المؤشر(ات) المتحققة"
+        ]
+      };
+    }
+    return {
+      type:"remote",
+      title:"التفعيل عن بُعد",
+      desc:"الحالة مؤكدة، ولم يتحقق أي مؤشر تصعيد من المؤشرات المعتمدة حتى الآن. يُفعَّل الفريق عن بُعد لإجراء تقييم أولي والتحقق من تدابير العزل والاحتواء، مع استمرار متابعة المؤشرات وإعادة التقييم إذا تغيرت المعطيات.",
+      chips:["تقييم أولي عن بُعد","إعادة التقييم عند تغيّر المعطيات"],
+      actions:[
+        "تنسيق عن بُعد مع الفرع/المكتب والمنشأة الصحية للتحقق من الوضع",
+        "التحقق من تطبيق تدابير العزل والاحتواء",
+        "متابعة مؤشرات التصعيد وإعادة التقييم إذا تغيرت المعطيات الميدانية",
+        "التصعيد إلى المسار المشروط فور تحقق أي مؤشر تصعيد"
+      ]
+    };
+  }
+
+  // suspected Group B or suspected MERS — غير مدرج ضمن المسارات الثلاثة في هذه الحالة
+  return {
+    type:"none",
+    title:"غير مدرج ضمن مسارات التفعيل الثلاثة بهذه الحالة",
+    desc:"هذا المرض في حالته المشتبهة غير مدرج ضمن قوائم التفعيل المباشر أو عن بُعد أو المشروط. يُتابع وفق آليات الترصد الوبائي الاعتيادية، ويُعاد التقييم فور تأكيد التشخيص مخبريًا.",
+    chips:["يتبع الترصد الاعتيادي","أعد التقييم عند التأكيد"],
+    actions:[
+      "المتابعة عبر آليات الترصد الوبائي الاعتيادية",
+      "إعادة الاختيار كـ«مؤكدة» فور تأكيد التشخيص مخبريًا لتحديد المسار الصحيح"
+    ]
+  };
+}
+
+function renderResultCard(){
+  const r = computeResult();
+  if(!r) return "";
+  return `
+  <div class="card r-${r.type}">
+    <span class="result-badge">${r.type==='direct'?'مباشر':r.type==='remote'?'عن بُعد':r.type==='conditional'?'مشروط':'بدون تفعيل'}</span>
+    <h2 class="result-title">${r.title}</h2>
+    <p class="result-desc">${r.desc}</p>
+    ${r.chips&&r.chips.length? `<div class="meta-row">${r.chips.map(c=>`<span class="chip">${c}</span>`).join('')}</div>`:''}
+    <ul class="actions">${r.actions.map(a=>`<li>${a}</li>`).join('')}</ul>
+  </div>`;
+}
+
+function attachHandlers(){
+  if(state.step===1){
+    const box = document.getElementById('searchBox');
+    box.addEventListener('input', e=>{
+      const q = e.target.value.trim();
+      document.querySelectorAll('#diseaseList .option').forEach(el=>{
+        const name = el.querySelector('span').textContent;
+        el.style.display = name.includes(q) ? 'flex':'none';
+      });
+    });
+    document.querySelectorAll('.option').forEach(el=>{
+      el.addEventListener('click',()=>{
+        const id = el.dataset.id;
+        state.disease = allDiseases.find(d=>d.id===id);
+        state.status = null;
+        state.checks = {};
+        state.showResult = false;
+        state.step = 2;
+        render();
+      });
+    });
+  }
+  if(state.step===2){
+    document.querySelectorAll('.choice').forEach(el=>{
+      el.addEventListener('click',()=>{
+        state.status = el.dataset.status;
+        render();
+      });
+    });
+    document.getElementById('backBtn').addEventListener('click',()=>{ state.step=1; render(); });
+    const nextBtn = document.getElementById('nextBtn');
+    if(nextBtn) nextBtn.addEventListener('click',()=>{ state.step=3; state.showResult=false; render(); });
+  }
+  if(state.step===3){
+    if(needsChecklist()){
+      document.querySelectorAll('.check-row').forEach(el=>{
+        el.addEventListener('click',()=>{
+          const id = el.dataset.id;
+          state.checks[id] = !state.checks[id];
+          state.showResult = false;
+          render();
+        });
+      });
+      const resultBtn = document.getElementById('resultBtn');
+      if(resultBtn) resultBtn.addEventListener('click',()=>{
+        state.showResult = true;
+        render();
+        const card = document.querySelector('.card.r-direct, .card.r-remote, .card.r-conditional, .card.r-none');
+        if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    }
+    document.getElementById('backBtn').addEventListener('click',()=>{ state.step=2; render(); });
+    const resetBtn = document.getElementById('resetBtn');
+    if(resetBtn) resetBtn.addEventListener('click',()=>{
+      state = {step:1, disease:null, status:null, checks:{}, showResult:false};
+      render();
+    });
+  }
+}
+
+render();
+</script>
+</body>
+</html>
