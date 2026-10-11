@@ -1,0 +1,965 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>IPC Isolation & RRT Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: sticky search console over a single column of condition cards, color-coded like isolation door signs */
+:root{
+  /* Precaution colors: Airborne blue, Droplet red, Contact green, Standard grey, Special purple */
+  --bg:#F3F6F7; --surface:#FFFFFF; --ink:#13212B; --muted:#5A6873; --line:#DCE3E7; --accent:#1F3B4D;
+  --air:#1F5FB8; --air-bg:#E3EDFB; --drop:#C0262D; --drop-bg:#FBE4E5; --cont:#1E7A3C; --cont-bg:#E1F3E6;
+  --std:#55636E; --std-bg:#EBEFF2; --spec:#6B3FA0; --spec-bg:#EFE7F9;
+  /* RRT pathway result colors (separate meaning from precaution colors) */
+  --rd:#A3342B; --rd-bg:#FAEAE8; --rr:#0F6E5D; --rr-bg:#E3F1EC; --ra:#9A5F17; --ra-bg:#FBF1E3;
+  --f-ar:"IBM Plex Sans Arabic","Segoe UI",Tahoma,system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-label:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1519; --surface:#152027; --ink:#E6EDF1; --muted:#97A6B0; --line:#26343C; --accent:#9CC3DA;
+  --air:#8DB8FF; --air-bg:#182B4A; --drop:#FF8A8F; --drop-bg:#44191C; --cont:#79D69A; --cont-bg:#15361F;
+  --std:#B3C0C9; --std-bg:#25313A; --spec:#C9A6FF; --spec-bg:#2E2145;
+  --rd:#FF9A90; --rd-bg:#3F1A17; --rr:#6FD3BC; --rr-bg:#123A31; --ra:#F0B868; --ra-bg:#3A2A12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1519; --surface:#152027; --ink:#E6EDF1; --muted:#97A6B0; --line:#26343C; --accent:#9CC3DA;
+  --air:#8DB8FF; --air-bg:#182B4A; --drop:#FF8A8F; --drop-bg:#44191C; --cont:#79D69A; --cont-bg:#15361F;
+  --std:#B3C0C9; --std-bg:#25313A; --spec:#C9A6FF; --spec-bg:#2E2145;
+  --rd:#FF9A90; --rd-bg:#3F1A17; --rr:#6FD3BC; --rr-bg:#123A31; --ra:#F0B868; --ra-bg:#3A2A12; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;padding-inline:16px}
+.wrap{max-width:760px;margin:0 auto;padding-block:20px 48px}
+header h1{font-family:var(--f-label);font-weight:700;font-size:2rem;line-height:1.05;letter-spacing:.01em;margin:0;text-wrap:balance}
+header p{margin:.35rem 0 0;color:var(--muted);font-size:.9rem}
+header a{color:var(--accent)}
+.console{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.search{position:relative}
+.search input{width:100%;font:inherit;font-size:1.05rem;padding:.8rem 2.6rem .8rem 1rem;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);font-size:1.4rem;width:36px;height:36px;border-radius:8px;cursor:pointer}
+.clear:focus-visible{outline:2px solid var(--accent)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-top:10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;font-family:var(--f-label);font-weight:600;font-size:.95rem;letter-spacing:.04em;text-transform:uppercase;padding:.35rem .8rem;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.chip[aria-pressed="true"]{border-color:currentColor}
+.chip[data-f="all"][aria-pressed="true"]{color:var(--ink);background:var(--std-bg)}
+.chip[data-f="A"]{--c:var(--air);--cb:var(--air-bg)} .chip[data-f="D"]{--c:var(--drop);--cb:var(--drop-bg)}
+.chip[data-f="C"]{--c:var(--cont);--cb:var(--cont-bg)} .chip[data-f="S"]{--c:var(--std);--cb:var(--std-bg)} .chip[data-f="X"]{--c:var(--spec);--cb:var(--spec-bg)}
+.chip[data-f]:not([data-f="all"])[aria-pressed="true"]{color:var(--c);background:var(--cb)}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.count{font-size:.85rem;color:var(--muted);padding-top:8px;font-variant-numeric:tabular-nums}
+.list{display:flex;flex-direction:column;gap:8px}
+.letter{font-family:var(--f-label);font-weight:700;font-size:1.1rem;color:var(--muted);letter-spacing:.08em;padding:10px 2px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card>button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:1fr auto;gap:4px 12px;width:100%;padding:12px 14px;cursor:pointer}
+.card>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:10px}
+.name{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.name em{font-style:italic}
+.chev{color:var(--muted);transition:transform .15s;align-self:start;margin-top:2px}
+.card.open .chev{transform:rotate(90deg)}
+.meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.badge{font-family:var(--f-label);font-weight:600;font-size:.88rem;letter-spacing:.05em;text-transform:uppercase;padding:.1rem .55rem;border-radius:5px;border:1.5px solid currentColor;line-height:1.35}
+.b-A{color:var(--air);background:var(--air-bg)} .b-D{color:var(--drop);background:var(--drop-bg)}
+.b-C{color:var(--cont);background:var(--cont-bg)} .b-S{color:var(--std);background:var(--std-bg)}
+.b-X{color:var(--spec);background:var(--spec-bg)} .b-R{color:var(--muted);background:transparent;border-style:dashed}
+.plus{font-size:.8rem;color:var(--muted)}
+.dur{grid-column:1/-1;font-size:.9rem;color:var(--muted)}
+.dur b{color:var(--ink);font-weight:700}
+.detail{padding:0 14px 14px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:10px}
+.detail h3{font-family:var(--f-label);font-size:.85rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 2px;font-weight:600}
+.detail p{margin:0;max-width:65ch}
+.routes{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.routes li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;font-size:.92rem}
+.routes li span:last-child{min-width:0}
+.see{align-self:flex-start;font:inherit;font-weight:700;color:var(--accent);background:none;border:1.5px solid var(--accent);border-radius:8px;padding:.4rem .8rem;cursor:pointer}
+.see:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ref ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.ref a{color:var(--accent);font-weight:700;overflow-wrap:anywhere}
+.ref span{display:block;color:var(--muted);font-size:.82rem}
+.key .cite{margin-top:12px;font-size:.85rem;color:var(--muted);max-width:65ch}
+.key .cite a{color:var(--accent)}
+.empty{padding:28px 4px;color:var(--muted);text-align:center}
+.key{margin-top:28px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.key h2{font-family:var(--f-label);font-size:1.15rem;letter-spacing:.04em;text-transform:uppercase;margin:0 0 8px}
+.key small{display:block;color:var(--muted);margin-top:10px;font-size:.82rem}
+/* Tabs */
+.tabs{display:flex;gap:6px;margin-top:16px;border-bottom:2px solid var(--line)}
+.tab{font:inherit;font-weight:700;font-size:.98rem;display:flex;align-items:center;gap:8px;padding:.6rem .9rem;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;color:var(--muted);cursor:pointer;min-width:0}
+.tab [lang="ar"]{font-family:var(--f-ar)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tab-n{font-family:var(--f-label);font-size:.85rem;width:1.5rem;height:1.5rem;display:grid;place-items:center;border-radius:50%;background:var(--std-bg);color:var(--muted);flex:none}
+.tab[aria-selected="true"] .tab-n{background:var(--accent);color:var(--surface)}
+.xlink{align-self:flex-start;font:inherit;font-weight:700;font-size:.92rem;color:var(--surface);background:var(--accent);border:0;border-radius:8px;padding:.45rem .85rem;cursor:pointer}
+.xlink [lang="ar"]{font-family:var(--f-ar)}
+.xlink:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rrt-tag{font-family:var(--f-ar);font-size:.78rem;font-weight:600;padding:.1rem .5rem;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+
+/* RRT pathway (Arabic, RTL) */
+#tab-rrt{font-family:var(--f-ar);padding-top:18px}
+.rrt-head h2{font-family:var(--f-body);font-size:1.05rem;letter-spacing:.02em;margin:0;direction:ltr;text-align:right}
+.rrt-head p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}
+.rrt-progress{display:flex;gap:6px;margin:16px 0}
+.rrt-progress span{flex:1;height:4px;border-radius:3px;background:var(--line)}
+.rrt-progress span.done{background:var(--rr)}
+.rcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 18px;margin-bottom:14px}
+.r-label{font-size:.78rem;font-weight:600;color:var(--rr);margin-bottom:4px}
+.r-title{font-size:1.15rem;font-weight:700;margin:0 0 4px}
+.r-hint{font-size:.88rem;color:var(--muted);margin:0 0 14px}
+.r-search{width:100%;font:inherit;font-family:var(--f-ar);font-size:.95rem;padding:.7rem .9rem;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);margin-bottom:10px}
+.r-search:focus{outline:none;border-color:var(--rr)}
+.r-list{max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.r-opt{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:.92rem;background:var(--surface);text-align:right}
+.r-opt:hover,.r-opt:focus-visible{border-color:var(--rr);background:var(--rr-bg)}
+.r-opt.sel{border-color:var(--rr);background:var(--rr-bg);font-weight:600}
+.r-opt span:first-child{min-width:0}
+.r-tag{font-size:.72rem;color:var(--rr);background:var(--rr-bg);padding:2px 8px;border-radius:20px;flex:none}
+.r-choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.r-choice{font:inherit;font-family:var(--f-ar);padding:16px 12px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;text-align:center;font-weight:700;font-size:.98rem;background:var(--surface);color:var(--ink)}
+.r-choice small{display:block;font-weight:400;font-size:.76rem;color:var(--muted);margin-top:4px}
+.r-choice:hover:not(:disabled){border-color:var(--rr)}
+.r-choice.sel{border-color:var(--rr);background:var(--rr-bg)}
+.r-choice:disabled{opacity:.4;cursor:not-allowed}
+.r-checks{display:flex;flex-direction:column;gap:8px}
+.r-check{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--surface);font-size:.9rem;line-height:1.6}
+.r-check input{margin-top:5px;accent-color:var(--rr);flex:none}
+.r-check.on{border-color:var(--ra);background:var(--ra-bg)}
+.r-nav{display:flex;gap:10px;margin-top:16px}
+.r-btn{font:inherit;font-family:var(--f-ar);font-size:.92rem;font-weight:600;border-radius:10px;padding:.65rem 1rem;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted)}
+.r-btn.pri{flex:1;background:var(--rr);color:var(--surface);border-color:var(--rr)}
+.r-btn.pri:disabled{opacity:.45;cursor:not-allowed}
+.r-btn:focus-visible,.r-choice:focus-visible{outline:2px solid var(--rr);outline-offset:2px}
+.r-badge{display:inline-block;font-size:.78rem;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:10px}
+.r-res-title{font-size:1.3rem;font-weight:700;margin:0 0 8px;line-height:1.4}
+.r-desc{font-size:.92rem;line-height:1.9;margin:0 0 14px}
+.r-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.r-chip{font-size:.76rem;background:var(--bg);padding:4px 10px;border-radius:20px;border:1px solid var(--line)}
+.r-actions{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:7px}
+.r-actions li{font-size:.88rem;line-height:1.7;padding:9px 11px;border-radius:8px;background:var(--bg);border-right:3px solid var(--rr)}
+.res-direct{border-color:var(--rd)} .res-direct .r-badge{background:var(--rd-bg);color:var(--rd)} .res-direct .r-actions li{border-right-color:var(--rd)}
+.res-remote .r-badge{background:var(--rr-bg);color:var(--rr)}
+.res-none .r-badge{background:var(--std-bg);color:var(--muted)}
+.r-iso h3{font-size:.95rem;margin:0 0 8px}
+.r-iso-item{display:flex;flex-direction:column;gap:4px;padding:9px 0;border-top:1px dashed var(--line)}
+.r-iso-item:first-of-type{border-top:0}
+.r-iso-item .nm{font-family:var(--f-body);font-weight:700;font-size:.9rem;direction:ltr;text-align:right}
+.r-iso-item .meta{direction:ltr;justify-content:flex-end}
+.r-iso-item .d{font-family:var(--f-body);font-size:.84rem;color:var(--muted);direction:ltr;text-align:right}
+/* Notification reminder */
+.notify{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;background:var(--rd-bg);color:var(--ink);border:1.5px solid var(--rd);font-size:.9rem;line-height:1.55}
+.notify .ic{flex:none;width:1.5rem;height:1.5rem;border-radius:50%;background:var(--rd);color:var(--surface);display:grid;place-items:center;font-weight:700}
+.notify [lang="ar"]{display:block;font-family:var(--f-ar);margin-top:4px}
+.modal-bg{position:fixed;inset:0;z-index:50;background:rgba(10,16,20,.55);display:grid;place-items:center;padding:16px}
+.modal{background:var(--surface);color:var(--ink);border-radius:14px;border-top:6px solid var(--rd);max-width:460px;width:100%;padding:20px 20px 16px;box-shadow:0 20px 50px -10px rgba(0,0,0,.45);max-height:90vh;overflow:auto}
+.modal .m-ic{width:2.6rem;height:2.6rem;border-radius:50%;background:var(--rd-bg);color:var(--rd);display:grid;place-items:center;font-size:1.4rem;font-weight:700;border:2px solid var(--rd)}
+.modal h2{font-family:var(--f-label);font-size:1.4rem;letter-spacing:.02em;margin:10px 0 4px;color:var(--rd)}
+.modal p{margin:0 0 8px}
+.modal .ar{font-family:var(--f-ar);direction:rtl;text-align:right;border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
+.modal .ar h2{font-family:var(--f-ar);font-size:1.2rem}
+.modal ul{margin:6px 0 10px;padding-inline-start:1.1rem;font-size:.9rem;color:var(--muted)}
+.modal .ok{width:100%;font:inherit;font-weight:700;padding:.7rem;border:0;border-radius:10px;background:var(--rd);color:var(--surface);cursor:pointer;margin-top:8px}
+.modal .ok:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+@media (max-width:420px){.r-choices{grid-template-columns:1fr}.tab{padding:.55rem .6rem;font-size:.9rem}}
+@media (prefers-reduced-motion: reduce){.chev{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>IPC Isolation &amp; RRT Tool</h1>
+    <p>Part 1: isolation precautions by disease (CDC Appendix A, updated Sept 11, 2026). Part 2: IPC rapid response team activation pathway.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Tool parts">
+    <button class="tab" role="tab" id="tabbtn-iso" aria-controls="tab-iso" aria-selected="true" data-tab="iso"><span class="tab-n">1</span> Isolation precautions</button>
+    <button class="tab" role="tab" id="tabbtn-rrt" aria-controls="tab-rrt" aria-selected="false" data-tab="rrt"><span class="tab-n">2</span> RRT Pathway</button>
+  </nav>
+
+  <section id="tab-iso" role="tabpanel" aria-labelledby="tabbtn-iso">
+
+  <div class="console">
+    <div class="search">
+      <label for="q" hidden>Search infection or condition</label>
+      <input id="q" type="search" placeholder="Search a disease, e.g. measles, TB, MRSA" autocomplete="off" spellcheck="false">
+      <button class="clear" id="clear" aria-label="Clear search" hidden>×</button>
+    </div>
+    <div class="chips" role="group" aria-label="Filter by precaution">
+      <button class="chip" data-f="all" aria-pressed="true">All</button>
+      <button class="chip" data-f="A" aria-pressed="false">Airborne</button>
+      <button class="chip" data-f="D" aria-pressed="false">Droplet</button>
+      <button class="chip" data-f="C" aria-pressed="false">Contact</button>
+      <button class="chip" data-f="S" aria-pressed="false">Standard only</button>
+      <button class="chip" data-f="X" aria-pressed="false">Special</button>
+    </div>
+    <div class="count" id="count" aria-live="polite"></div>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <section class="key" aria-label="Precaution key">
+    <h2>What each precaution means</h2>
+    <p class="cite" style="margin-top:0">Colors match common isolation door signs: <b style="color:var(--air)">blue Airborne</b>, <b style="color:var(--drop)">red Droplet</b>, <b style="color:var(--cont)">green Contact</b>, <b style="color:var(--std)">grey Standard</b>, <b style="color:var(--spec)">purple Special</b>. Neither WHO nor CDC sets official sign colors, so check your facility's signage.</p>
+    <ul class="routes" id="legend"></ul>
+    <p class="cite"><b>Reference:</b> Siegel JD, Rhinehart E, Jackson M, Chiarello L, and the Healthcare Infection Control Practices Advisory Committee. <i>2007 Guideline for Isolation Precautions: Preventing Transmission of Infectious Agents in Healthcare Settings</i>, Appendix A: Type and Duration of Precautions Recommended for Selected Infections and Conditions. Centers for Disease Control and Prevention; last updated September 11, 2026. <a href="https://www.cdc.gov/infection-control/hcp/isolation-precautions/appendix-a-type-duration.html" target="_blank" rel="noopener">cdc.gov/infection-control/hcp/isolation-precautions/appendix-a-type-duration.html</a></p>
+    <p class="cite"><b>Added from other guidance (not in Appendix A):</b> <a href="https://www.cdc.gov/mers/hcp/infection-control/index.html" target="_blank" rel="noopener">MERS-CoV</a>, <a href="https://www.cdc.gov/candida-auris/hcp/infection-control/index.html" target="_blank" rel="noopener">Candida auris</a>, <a href="https://www.cdc.gov/mpox/hcp/infection-control/healthcare-settings.html" target="_blank" rel="noopener">mpox</a>, <a href="https://www.cdc.gov/bird-flu/hcp/novel-flu-infection-control/" target="_blank" rel="noopener">novel influenza A</a>, <a href="https://www.cdc.gov/zika/hc-providers/infection-control.html" target="_blank" rel="noopener">Zika</a>, <a href="https://www.cdc.gov/chikungunya/hcp/treatment-prevention/index.html" target="_blank" rel="noopener">chikungunya</a> (CDC); <a href="https://www.who.int/news-room/fact-sheets/detail/rift-valley-fever" target="_blank" rel="noopener">Rift Valley fever</a> (WHO); <a href="https://www.canada.ca/en/public-health/services/laboratory-biosafety-biosecurity/pathogen-safety-data-sheets-risk-assessment/alkhumra-virus.html" target="_blank" rel="noopener">Alkhurma hemorrhagic fever</a> (Public Health Agency of Canada). The RRT activation pathway in part 2 comes from your RRT tool.</p>
+    <small>Reference aid only. Always follow your facility's infection prevention policy and current CDC guidance; entries marked "Special" or "See linked entry" point to separate guidance.</small>
+  </section>
+  </section>
+
+  <section id="tab-rrt" role="tabpanel" aria-labelledby="tabbtn-rrt" dir="rtl" lang="ar" hidden>
+    <div class="rrt-head">
+      <h2>IPC RRT ACTIVATION PATHWAY TOOL</h2>
+      <p>أداة مساعدة للقرار — مسار تفعيل فرق الاستجابة السريعة لمكافحة العدوى</p>
+    </div>
+    <div class="rrt-progress" id="rrtProgress" aria-hidden="true"></div>
+    <div id="rrtApp"></div>
+  </section>
+</div>
+
+<script>
+const ROUTE = {
+  A:{label:"Airborne", how:"Airborne: tiny particles that stay suspended in air. Use an AIIR (negative-pressure room) and an N95 respirator or higher."},
+  D:{label:"Droplet", how:"Droplet: large respiratory droplets over short distances. Single room if possible; facemask on entry."},
+  C:{label:"Contact", how:"Contact: direct touch or contaminated surfaces and equipment. Gown and gloves on entry; dedicated equipment."},
+  S:{label:"Standard", how:"Standard: hand hygiene and PPE based on expected exposure to blood and body fluids. Applies to every patient."},
+  X:{label:"Special", how:"Special: condition-specific placement and PPE described in the comments (e.g. AIIR plus full PPE)."},
+  R:{label:"See linked entry", how:"See linked entry: the table points to another row or separate CDC guidance."}
+};
+const DIAP = "Use Contact Precautions for diapered or incontinent persons for the duration of illness or to control institutional outbreaks.";
+const NP = "Not transmitted from person to person.";
+const T24 = "Until 24 hours after initiation of effective therapy";
+const DOI = "Duration of illness";
+const LES = "Until lesions dry and crusted";
+// [condition, code, duration, comments, seeTarget, extraKeywords]
+const DATA = [
+["Abscess — draining, major","C",DOI,"Until drainage stops or can be contained by dressing."],
+["Abscess — draining, minor or limited","S","","If dressing covers and contains drainage."],
+["Acquired immunodeficiency syndrome (HIV)","S","","Postexposure chemoprophylaxis for some blood exposures.","","aids"],
+["Actinomycosis","S","",NP],
+["Adenovirus infection","R","","See agent-specific guidance under Gastroenteritis, Conjunctivitis and Pneumonia.","adenovirus"],
+["Alkhurma hemorrhagic fever (Alkhumra virus)","S","","No human-to-human transmission documented; spread by tick bites and contact with blood or raw meat of infected animals (camels, sheep, goats). Use Standard Precautions, with care around blood and body fluids. Report to public health per local requirements.","","alkhumra ahf tick"],
+["Amebiasis","S","","Person-to-person transmission is rare. Use care when handling diapered infants and mentally challenged persons."],
+["Andes virus","X","Case-by-case, with local, state and federal health authorities (consider symptoms, when they resolved, other conditions such as TB or C. difficile, and lab results).","Patient placement: AIIR. PPE: gown, gloves, eye protection, N95 respirator or higher. (New recommendation, Sept 2024.)","","hantavirus"],
+["Anthrax","S","","Infected patients do not generally pose a transmission risk."],
+["Anthrax — cutaneous","S","","Transmission through non-intact skin contact with draining lesions is possible, so use Contact Precautions if there is a large amount of uncontained drainage. Soap-and-water handwashing is preferred because alcohol does not kill spores."],
+["Anthrax — pulmonary","S","",NP],
+["Anthrax — environmental (aerosolizable spore-containing powder)","X","Until environment completely decontaminated","Wear a respirator (N95 or PAPR) and protective clothing; decontaminate persons with powder on them. Wash hands 30–60 seconds with soap and water or 2% chlorhexidine after spore contact. Postexposure: 60 days of doxycycline, ciprofloxacin or levofloxacin, plus postexposure vaccine under IND."],
+["Antibiotic-associated colitis","R","","See Clostridium difficile.","difficile"],
+["Arthropod-borne viral encephalitides and viral fevers (EEE, WEE, VEE, St Louis, California encephalitis, West Nile; dengue, Oropouche, yellow fever, Colorado tick fever)","S","","Install screens in windows and doors in endemic areas. Use DEET-containing repellents and clothing that covers the extremities.","","arbovirus mosquito yellow fever west nile oropouche"],
+["Ascariasis","S","",NP],
+["Aspergillosis","S","","Contact and Airborne Precautions if massive soft tissue infection with copious drainage and repeated irrigations are required."],
+["Avian influenza","R","","See Influenza — avian.","influenza"],
+["Babesiosis","S","","Not transmitted from person to person, except rarely by transfusion."],
+["Blastomycosis, North American (cutaneous or pulmonary)","S","",NP],
+["Botulism","S","",NP],
+["Bronchiolitis","C",DOI,"Use a mask according to Standard Precautions. See also Respiratory infectious disease — infants and young children."],
+["Brucellosis (undulant, Malta, Mediterranean fever)","S","","Person-to-person spread in healthcare is rare. For procedures that could splash or aerosolize infectious fluids or tissue (e.g. orthopedic or obstetric surgery, intubation), wear an N95 or higher plus eye protection instead of a facemask. Antimicrobial prophylaxis after laboratory exposure."],
+["Campylobacter gastroenteritis","R","","See Gastroenteritis.","gastroenteritis"],
+["Candida auris (infection or colonization)","C","Entire inpatient stay. Colonization can last months or indefinitely, so do not stop precautions when the infection resolves.","Single room when possible; give priority to patients with uncontained secretions, diarrhea or draining wounds. Nursing homes may use Contact or Enhanced Barrier Precautions per local or state guidance; cohorting is allowed with at least 3 ft between beds and each bed area cleaned as a separate room. Clean and disinfect rooms at least daily and at discharge with an EPA List P product (quaternary ammonium alone is not effective); disinfect shared equipment after each use. Alcohol hand rub preferred unless hands are visibly soiled.","","c auris cauris fungus yeast mdro"],
+["Candidiasis, all forms including mucocutaneous","S",""],
+["Cat-scratch fever","S","",NP],
+["Cellulitis","S",""],
+["Chancroid (H. ducreyi)","S","","Transmitted sexually from person to person."],
+["Chikungunya virus infection","S","","Not spread person-to-person in routine care. Patients should avoid mosquito exposure during the first week of illness to prevent local spread (screens, repellent, covered skin).","","chik mosquito arbovirus"],
+["Chickenpox","R","","See Varicella-zoster.","varicella"],
+["Chlamydia trachomatis — conjunctivitis","S",""],
+["Chlamydia trachomatis — genital (lymphogranuloma venereum)","S",""],
+["Chlamydia trachomatis — pneumonia (infants ≤3 months)","S",""],
+["Chlamydia pneumoniae","S","","Outbreaks in institutionalized populations reported, rarely."],
+["Cholera","R","","See Gastroenteritis.","gastroenteritis"],
+["Closed-cavity infection — open drain, limited or minor drainage","S","","Contact Precautions if there is copious uncontained drainage."],
+["Closed-cavity infection — no drain or closed drainage system","S",""],
+["Clostridium botulinum","S","",NP],
+["Clostridium difficile","C",DOI,"See also Gastroenteritis — C. difficile.","","c diff cdiff"],
+["Clostridium perfringens — food poisoning","S","",NP],
+["Clostridium perfringens — gas gangrene","S","","Person-to-person transmission is rare. Use Contact Precautions if wound drainage is extensive."],
+["Coccidioidomycosis (valley fever) — draining lesions","S","","Not transmitted from person to person except under extraordinary circumstances."],
+["Coccidioidomycosis (valley fever) — pneumonia","S","","Not transmitted from person to person except under extraordinary circumstances (e.g. necropsy, transplant of infected lung)."],
+["Colorado tick fever","S","",NP],
+["Congenital rubella","C","Until 1 year of age","Standard Precautions if nasopharyngeal and urine cultures are repeatedly negative after 3 months of age."],
+["Conjunctivitis — acute bacterial","S",""],
+["Conjunctivitis — Chlamydia","S",""],
+["Conjunctivitis — gonococcal","S",""],
+["Conjunctivitis — acute viral (acute hemorrhagic)","C",DOI,"Adenovirus most common. Highly contagious; outbreaks reported in eye clinics, pediatric, neonatal and institutional settings.","","pink eye"],
+["Coronavirus associated with SARS (SARS-CoV)","R","","See Severe acute respiratory syndrome.","severe acute"],
+["Coxsackie virus disease","R","","See Enteroviral infections.","enteroviral"],
+["Creutzfeldt-Jakob disease (CJD, vCJD)","S","","Use disposable instruments or special sterilization/disinfection for items contaminated with neural tissue if CJD or vCJD is suspected and not ruled out. No special burial procedures.","","prion"],
+["Croup","R","","See Respiratory infectious disease — infants and young children.","respiratory infectious"],
+["Crimean-Congo fever","R","","See Viral hemorrhagic fevers.","hemorrhagic"],
+["Cryptococcosis","S","","Not transmitted from person to person, except rarely via tissue and corneal transplant."],
+["Cryptosporidiosis","R","","See Gastroenteritis.","gastroenteritis"],
+["Cysticercosis","S","",NP],
+["Cytomegalovirus (CMV), including neonates and immunosuppressed","S","","No additional precautions for pregnant healthcare workers.","","cmv"],
+["Decubitus ulcer","R","","See Pressure ulcer.","pressure ulcer"],
+["Dengue fever","S","",NP],
+["Diarrhea, acute — infective cause suspected","R","","See Gastroenteritis.","gastroenteritis"],
+["Diphtheria — cutaneous","C","Until off antimicrobial treatment and culture-negative","Until 2 cultures taken 24 hours apart are negative."],
+["Diphtheria — pharyngeal","D","Until off antimicrobial treatment and culture-negative","Until 2 cultures taken 24 hours apart are negative."],
+["Ebola virus","R","","See Viral hemorrhagic fevers.","hemorrhagic"],
+["Echinococcosis (hydatidosis)","S","",NP],
+["Echovirus","R","","See Enteroviral infections.","enteroviral"],
+["Encephalitis or encephalomyelitis","R","","See the specific causative agent."],
+["Endometritis (endomyometritis)","S",""],
+["Enterobiasis (pinworm, oxyuriasis)","S",""],
+["Enterococcus species","R","","See Multidrug-resistant organisms if epidemiologically significant or vancomycin-resistant.","multidrug"],
+["Enterocolitis, C. difficile","R","","See Gastroenteritis — C. difficile.","difficile"],
+["Enteroviral infections (Coxsackie A and B, echovirus; excludes polio)","S","","Use Contact Precautions for diapered or incontinent children for the duration of illness and to control institutional outbreaks.","","hand foot mouth"],
+["Epiglottitis, due to Haemophilus influenzae type b","D",T24,"See specific agents for epiglottitis due to other causes.","","hib"],
+["Epstein-Barr virus, including infectious mononucleosis","S","","","","ebv"],
+["Erythema infectiosum","R","","See Parvovirus B19.","parvovirus","fifth disease"],
+["Escherichia coli gastroenteritis","R","","See Gastroenteritis.","gastroenteritis"],
+["Food poisoning — botulism","S","",NP],
+["Food poisoning — C. perfringens or welchii","S","",NP],
+["Food poisoning — staphylococcal","S","",NP],
+["Furunculosis, staphylococcal","S","","Contact if drainage is not controlled. Follow institutional policy if MRSA."],
+["Furunculosis, staphylococcal — infants and young children","C","Duration of illness (with wound lesions, until wounds stop draining)",""],
+["Gangrene (gas gangrene)","S","",NP],
+["Gastroenteritis (general)","S","","Use Contact Precautions for diapered or incontinent persons for the duration of illness or to control institutional outbreaks. Applies to all agents listed below.","","diarrhea"],
+["Gastroenteritis — adenovirus","S","",DIAP],
+["Gastroenteritis — Campylobacter","S","",DIAP],
+["Gastroenteritis — cholera (Vibrio cholerae)","S","",DIAP],
+["Gastroenteritis — C. difficile","C",DOI,"Discontinue antibiotics if appropriate. Do not share electronic thermometers. Ensure consistent environmental cleaning; hypochlorite may be needed if transmission continues. Soap-and-water handwashing preferred because alcohol rubs are not sporicidal.","","c diff cdiff clostridium clostridioides"],
+["Gastroenteritis — Cryptosporidium","S","",DIAP],
+["Gastroenteritis — E. coli O157:H7 and other Shiga toxin-producing strains","S","",DIAP,"","stec ehec"],
+["Gastroenteritis — E. coli, other","S","",DIAP],
+["Gastroenteritis — Giardia lamblia","S","",DIAP,"","giardiasis"],
+["Gastroenteritis — norovirus","C","At least 48 hours after symptoms resolve, or longer to control outbreaks","Masks may help staff cleaning areas heavily soiled with vomit or feces, since the virus can be aerosolized. Clean consistently with focus on restrooms; hypochlorite may be needed if transmission continues. Cohort affected patients during outbreaks. (Updated April 2019 from Standard to Contact + Standard.)","","norwalk"],
+["Gastroenteritis — rotavirus","C",DOI,"Ensure consistent environmental cleaning and frequent removal of soiled diapers. Shedding may be prolonged in children, the elderly and the immunocompromised."],
+["Gastroenteritis — Salmonella (including S. typhi)","S","",DIAP,"","salmonellosis typhoid"],
+["Gastroenteritis — Shigella (bacillary dysentery)","S","",DIAP,"","shigellosis"],
+["Gastroenteritis — Vibrio parahaemolyticus","S","",DIAP],
+["Gastroenteritis — viral (not covered elsewhere)","S","",DIAP],
+["Gastroenteritis — Yersinia enterocolitica","S","",DIAP],
+["German measles","R","","See Rubella and Congenital rubella.","rubella"],
+["Giardiasis","R","","See Gastroenteritis.","giardia"],
+["Gonococcal ophthalmia neonatorum","S",""],
+["Gonorrhea","S",""],
+["Granuloma inguinale (donovanosis)","S",""],
+["Guillain-Barré syndrome","S","","Not an infectious condition."],
+["Haemophilus influenzae","R","","See disease-specific recommendations.","haemophilus"],
+["Hand, foot, and mouth disease","R","","See Enteroviral infections.","enteroviral"],
+["Hansen's disease","R","","See Leprosy.","leprosy"],
+["Hantavirus pulmonary syndrome","S","","Not transmitted from person to person. For Andes virus, see Andes virus."],
+["Helicobacter pylori","S",""],
+["Hepatitis A","S","","Provide hepatitis A vaccine postexposure as recommended."],
+["Hepatitis A — diapered or incontinent patients","C","See comments (varies by age)","Maintain Contact Precautions: under 3 years, for the whole hospitalization; 3–14 years, 2 weeks after symptom onset; over 14 years, 1 week after symptom onset."],
+["Hepatitis B (HBsAg positive; acute or chronic)","S","","See specific recommendations for hemodialysis centers."],
+["Hepatitis C and other non-A, non-B","S","","See specific recommendations for hemodialysis centers."],
+["Hepatitis D (only with hepatitis B)","S",""],
+["Hepatitis E","S","","Use Contact Precautions for diapered or incontinent individuals for the duration of illness."],
+["Hepatitis G","S",""],
+["Herpangina","R","","See Enteroviral infections.","enteroviral"],
+["Hookworm","S",""],
+["Herpes simplex — encephalitis","S","","","","hsv"],
+["Herpes simplex — mucocutaneous, disseminated or primary, severe","C",LES,"","","hsv"],
+["Herpes simplex — mucocutaneous, recurrent (skin, oral, genital)","S","","","","hsv cold sore"],
+["Herpes simplex — neonatal","C",LES,"Also for asymptomatic exposed infants (vaginal or C-section delivery) when the mother has active infection and membranes were ruptured over 4–6 hours, until infant surface cultures at 24–36 hours are negative after 48 hours of incubation.","","hsv"],
+["Herpes zoster (shingles) — disseminated in any patient, or localized in an immunocompromised patient until dissemination ruled out","AC",DOI,"Susceptible healthcare workers should not enter the room if immune caregivers are available.","","shingles varicella"],
+["Herpes zoster (shingles) — localized, intact immune system, lesions can be covered","S",LES,"Susceptible healthcare workers should not provide direct care when immune caregivers are available.","","shingles varicella"],
+["Histoplasmosis","S","",NP],
+["Human immunodeficiency virus (HIV)","S","","Postexposure chemoprophylaxis for some blood exposures.","","aids"],
+["Human metapneumovirus","C",DOI,"Route not established; assumed Contact as for RSV. Wear masks according to Standard Precautions.","","hmpv"],
+["Impetigo","C",T24,""],
+["Infectious mononucleosis","S","","","","ebv mono"],
+["Influenza — human (seasonal)","R","","See CDC's Prevention Strategies for Seasonal Influenza in Healthcare Settings for current guidance.","","flu"],
+["Influenza — avian (e.g. H5N1, H7, H9)","R","","See Novel influenza A (CDC interim guidance for novel influenza A viruses associated with severe disease).","novel influenza","flu bird"],
+["Influenza — pandemic","D","","See CDC's interim guidance for novel influenza A viruses for current pandemic influenza guidance.","","flu"],
+["Kawasaki syndrome","S","","Not an infectious condition."],
+["Lassa fever","R","","See Viral hemorrhagic fevers.","hemorrhagic"],
+["Legionnaires' disease","S","",NP,"","legionella"],
+["Leprosy","S","","","","hansen"],
+["Leptospirosis","S","",NP],
+["Lice — head (pediculosis)","C",T24,"","","pediculosis"],
+["Lice — body","S","","Spread through infested clothing. Wear gown and gloves when removing clothing; bag and wash clothes per CDC guidance."],
+["Lice — pubic","S","","Spread through sexual contact."],
+["Listeriosis (Listeria monocytogenes)","S","","Person-to-person transmission is rare; cross-transmission in neonatal settings reported."],
+["Lyme disease","S","",NP],
+["Lymphocytic choriomeningitis","S","",NP],
+["Lymphogranuloma venereum","S",""],
+["Malaria","S","","Not transmitted from person to person, except rarely through transfusion or failure to follow Standard Precautions. Use screens and DEET repellents in endemic areas."],
+["Marburg virus disease","R","","See Viral hemorrhagic fevers.","hemorrhagic"],
+["Measles (rubeola)","A","4 days after onset of rash; duration of illness if immunocompromised","All staff, regardless of immunity, wear a fit-tested N95 or better on entering the room. Susceptible staff should not enter if immune staff are available. Exposed susceptibles: vaccine within 72 hours or immune globulin within 6 days. Place exposed susceptible patients on Airborne Precautions and exclude susceptible staff. (See CDC interim measles guidance, 2019.)","","rubeola"],
+["Melioidosis, all forms","S","",NP],
+["Meningitis — aseptic (nonbacterial or viral)","S","","Contact Precautions for infants and young children."],
+["Meningitis — gram-negative enteric, in neonates","S",""],
+["Meningitis — fungal","S",""],
+["Meningitis — Haemophilus influenzae type b, known or suspected","D",T24,"","","hib"],
+["Meningitis — Listeria monocytogenes","S",""],
+["Meningitis — Neisseria meningitidis (meningococcal), known or suspected","D",T24,"See Meningococcal disease.","","meningococcal"],
+["Meningitis — Streptococcus pneumoniae","S","","","","pneumococcal"],
+["Meningitis — M. tuberculosis","S","","Active pulmonary disease or draining skin lesions may require Contact and/or Airborne. For children, Airborne Precautions until active TB is ruled out in visiting family members.","","tb tuberculosis"],
+["Meningitis — other diagnosed bacterial","S",""],
+["Meningococcal disease: sepsis, pneumonia, meningitis","D",T24,"Postexposure chemoprophylaxis for household contacts and healthcare workers exposed to respiratory secretions; postexposure vaccine only to control outbreaks.","","neisseria"],
+["Middle East respiratory syndrome coronavirus (MERS-CoV), suspected or confirmed","AC","Case-by-case, with local, state and federal health authorities (consider symptoms, when they resolved, other conditions such as TB or C. difficile, and lab results).","Airborne Infection Isolation Room (negative pressure, at least 6 air changes/hour, 12 for new builds); if none is available, mask the patient in a closed room and transfer as soon as feasible. PPE: gown, gloves, fit-tested N95 or higher, and eye protection (goggles or face shield). Do aerosol-generating procedures only when necessary, in an AIIR, with minimal staff. Restrict visitors. Monitor exposed staff for 14 days; exclude asymptomatic staff with unprotected exposure for 14 days.","","mers merscov mers cov coronavirus camel"],
+["Molluscum contagiosum","S",""],
+["Mpox (monkeypox), clade I and clade II","X","Suspected: until ruled out. Confirmed: until all lesions have crusted, crusts have separated and fresh skin has formed.","Standard Precautions plus single room with dedicated bathroom; keep the door closed when safe. Special air handling not required, but do intubation, extubation and other procedures likely to spread oral secretions in an AIIR. PPE: gown, gloves, eye protection (goggles or face shield) and N95 or higher. Do not unroof or aspirate lesions with sharps. Patient wears a mask with lesions covered during transport. Handle laundry gently without shaking; wet cleaning only, with an EPA-registered disinfectant with an emerging viral pathogen claim. Exposed asymptomatic patients: no isolation, daily skin check for 21 days.","","monkeypox mpox clade ib"],
+["Mucormycosis","S",""],
+["Multidrug-resistant organisms (MDROs) — infection or colonization (MRSA, VRE, VISA/VRSA, ESBLs, resistant S. pneumoniae)","C","","Applies to MDROs your infection control program judges significant. Contact Precautions where there is ongoing transmission, in high-risk acute care settings, or with wounds that dressings cannot contain. Contact the state health department about new or emerging MDROs.","","mrsa vre esbl cre mdro resistant"],
+["Mumps (infectious parotitis)","D","Until 5 days after onset of swelling","Susceptible healthcare workers should not provide care if immune caregivers are available. (Isolation shortened from 9 to 5 days.)","","parotitis"],
+["Mycobacteria, nontuberculous (atypical) — pulmonary","S","","Not transmitted person-to-person.","","ntm mac"],
+["Mycobacteria, nontuberculous (atypical) — wound","S","","Not transmitted person-to-person.","","ntm"],
+["Mycoplasma pneumonia","D",DOI,""],
+["Necrotizing enterocolitis","S","","Contact Precautions when cases cluster in time."],
+["Nipah virus","X","Case-by-case, with local, state and federal health authorities (consider symptoms, when they resolved, other conditions, and lab results).","Patient placement: AIIR. Suspected and clinically stable: gown, gloves, eye protection, N95 or higher. Suspected and clinically unstable (e.g. hemodynamic instability, vomiting), or any confirmed case: use CDC PPE guidance for confirmed or clinically unstable VHF patients. (New recommendation, Sept 2024.)"],
+["Nocardiosis (draining lesions or other)","S","","Not transmitted person-to-person."],
+["Norovirus","R","","See Gastroenteritis — norovirus.","norovirus"],
+["Norwalk agent gastroenteritis","R","","See Gastroenteritis — norovirus.","norovirus"],
+["Novel influenza A, suspected or confirmed (incl. avian H5N1, H7N9)","AC","Not defined by CDC; decide case by case with public health authorities.","Standard + Contact + Airborne Precautions with eye protection. AIIR; if none, mask the patient in a closed exam room and transfer as soon as feasible. Only essential staff enter. PPE: gloves, gown, fit-tested N95 or higher, goggles or face shield. Patient wears a facemask outside the room. Patients on antivirals still shed virus. Exclude asymptomatic staff with unprotected exposure until 10 days after last exposure.","","bird flu avian h5n1 h7n9 h5 novel pandemic"],
+["Orf","S",""],
+["Parainfluenza virus — respiratory, infants and young children","C",DOI,"Shedding may be prolonged in immunosuppressed patients."],
+["Parvovirus B19 (erythema infectiosum)","D","See comments","Chronic disease in an immunocompromised patient: for the whole hospitalization. Transient aplastic or red-cell crisis: 7 days.","","fifth disease"],
+["Pediculosis (lice)","C",T24,"","","lice"],
+["Pertussis (whooping cough)","D","Until 5 days after initiation of effective antibiotic therapy","Single room preferred; cohorting is an option. Postexposure chemoprophylaxis for household contacts and healthcare workers with prolonged exposure to respiratory secretions.","","whooping"],
+["Pinworm infection (enterobiasis)","S",""],
+["Plague (Yersinia pestis) — bubonic","S",""],
+["Plague (Yersinia pestis) — pneumonic","D","Until 48 hours after initiation of effective antibiotic therapy","Antimicrobial prophylaxis for exposed healthcare workers."],
+["Pneumonia — adenovirus","DC",DOI,"Extend Droplet and Contact Precautions in immunocompromised hosts because of prolonged shedding."],
+["Pneumonia — bacterial not listed elsewhere (incl. gram-negative)","S",""],
+["Pneumonia — B. cepacia in cystic fibrosis (incl. colonization)","C","Unknown","Avoid exposure to other persons with CF; private room preferred. Criteria for stopping precautions not established.","","burkholderia"],
+["Pneumonia — B. cepacia without CF","R","","See Multidrug-resistant organisms.","multidrug"],
+["Pneumonia — Chlamydia","S",""],
+["Pneumonia — fungal","S",""],
+["Pneumonia — Haemophilus influenzae type b, adults","S","","","","hib"],
+["Pneumonia — Haemophilus influenzae type b, infants and children","D",T24,"","","hib"],
+["Pneumonia — Legionella","S",""],
+["Pneumonia — meningococcal","D",T24,"See Meningococcal disease."],
+["Pneumonia — multidrug-resistant bacterial","R","","See Multidrug-resistant organisms.","multidrug"],
+["Pneumonia — Mycoplasma (primary atypical)","D",DOI,""],
+["Pneumonia — pneumococcal","S","","Use Droplet Precautions if there is evidence of transmission within a unit or facility."],
+["Pneumonia — Pneumocystis jirovecii (carinii)","S","","Avoid placing in the same room as an immunocompromised patient.","","pcp pjp"],
+["Pneumonia — Staphylococcus aureus","S","","For MRSA, see Multidrug-resistant organisms."],
+["Pneumonia — Streptococcus group A, adults","D",T24,"Contact Precautions if skin lesions present.","","gas"],
+["Pneumonia — Streptococcus group A, infants and young children","D",T24,"Contact Precautions if skin lesions present.","","gas"],
+["Pneumonia — varicella-zoster","R","","See Varicella-zoster.","varicella"],
+["Pneumonia — viral, adults","S",""],
+["Pneumonia — viral, infants and young children","R","","See Respiratory infectious disease — infants and young children, or the specific virus.","respiratory infectious"],
+["Poliomyelitis","C",DOI,"","","polio"],
+["Pressure ulcer, infected — major","C",DOI,"Until drainage stops or can be contained by dressing.","","decubitus bedsore"],
+["Pressure ulcer, infected — minor or limited","S","","If dressing covers and contains drainage.","","decubitus bedsore"],
+["Prion disease","R","","See Creutzfeldt-Jakob disease.","creutzfeldt"],
+["Psittacosis (ornithosis, Chlamydia psittaci)","S","",NP],
+["Q fever","S",""],
+["Rabies","S","","Person-to-person transmission is rare (reported via transplants). If the patient bit someone or saliva contaminated an open wound or mucous membrane, wash the area thoroughly and give postexposure prophylaxis."],
+["Rat-bite fever (Streptobacillus moniliformis, Spirillum minus)","S","",NP],
+["Relapsing fever","S","",NP],
+["Resistant bacterial infection or colonization","R","","See Multidrug-resistant organisms.","multidrug"],
+["Respiratory infectious disease, acute (not covered elsewhere) — adults, incl. SARS-CoV-2","S","For SARS-CoV-2, see comments","SARS-CoV-2 (interim): single-person room; aerosol-generating procedures in an AIIR if possible; gown, gloves, eye protection, N95 or higher. Mild–moderate, not immunocompromised: at least 10 days since symptom onset, 24 hours fever-free without antipyretics, and improving symptoms. Asymptomatic: 10 days from first positive test. Severe–critical: 10 to 20 days since onset plus the same criteria. Moderately–severely immunocompromised: test-based strategy (2 negative specimens 48 hours apart) and infectious disease consultation.","","covid covid-19 sars-cov-2 coronavirus"],
+["Respiratory infectious disease, acute — infants and young children","C",DOI,"Also see syndromes and conditions in CDC Table 2.","","croup bronchiolitis"],
+["Respiratory syncytial virus (RSV) — infants, young children, immunocompromised adults","C",DOI,"Wear a mask according to Standard Precautions. Extend Contact Precautions in immunocompromised patients because of prolonged shedding.","","rsv"],
+["Reye's syndrome","S","","Not an infectious condition."],
+["Rheumatic fever","S","","Not an infectious condition."],
+["Rhinovirus","D",DOI,"Droplet is the main route. Add Contact Precautions if copious moist secretions and close contact are likely (e.g. young infants)."],
+["Rickettsial fevers, tickborne (Rocky Mountain spotted fever, tickborne typhus)","S","","Not transmitted person-to-person, except rarely through transfusion."],
+["Rickettsialpox","S","",NP],
+["Rift Valley fever","S","","No human-to-human transmission documented. There is a theoretical risk from contact with infected blood or tissue, so use Standard Precautions when caring for patients and handling specimens; no transmission to staff has been reported when standard precautions were followed.","","rvf"],
+["Ringworm (dermatophytosis, tinea)","S","","Rare healthcare outbreaks reported; use Contact Precautions during an outbreak.","","tinea"],
+["Rocky Mountain spotted fever","S","","Not transmitted person-to-person, except rarely through transfusion.","","rmsf"],
+["Roseola infantum (HHV-6)","S",""],
+["Rotavirus infection","R","","See Gastroenteritis — rotavirus.","rotavirus"],
+["Rubella (German measles)","D","Until 7 days after onset of rash","Susceptible staff should not enter if immune caregivers are available; immune staff need no face protection. Non-immune pregnant women should not care for these patients. Vaccinate susceptible exposed contacts within 3 days. Exclude susceptible staff from day 5 to day 21 after last exposure. See also Congenital rubella.","","german measles"],
+["Rubeola","R","","See Measles.","measles"],
+["Salmonellosis","R","","See Gastroenteritis.","salmonella"],
+["Scabies","C",T24,""],
+["Scalded skin syndrome, staphylococcal","C",DOI,"See Staphylococcal disease — scalded skin syndrome.","","ssss"],
+["Schistosomiasis","S",""],
+["Severe acute respiratory syndrome (SARS)","ADC","Duration of illness plus 10 days after fever resolves, if respiratory symptoms are absent or improving","Airborne preferred; Droplet if no AIIR is available. N95 or higher and eye protection (surgical mask if N95 unavailable). Aerosol-generating procedures carry the highest risk. Vigilant environmental disinfection.","","sars-cov"],
+["Shigellosis","R","","See Gastroenteritis.","shigella"],
+["Smallpox (variola)","AC",DOI,"Until all scabs have crusted and separated (3–4 weeks). Non-vaccinated staff should not provide care when immune staff are available; N95 or higher for all. Postexposure vaccine within 4 days.","","variola"],
+["Sporotrichosis","S",""],
+["Staphylococcal disease (S. aureus) — skin, wound or burn, major","C",DOI,"Until drainage stops or can be contained by dressing."],
+["Staphylococcal disease — skin, wound or burn, minor or limited","S","","If dressing covers and contains drainage."],
+["Staphylococcal disease — enterocolitis","S","","Contact Precautions for diapered or incontinent children for the duration of illness."],
+["Staphylococcal disease — multidrug-resistant","R","","See Multidrug-resistant organisms.","multidrug","mrsa"],
+["Staphylococcal disease — pneumonia","S",""],
+["Staphylococcal disease — scalded skin syndrome","C",DOI,"Consider staff as a possible source in nursery and NICU outbreaks.","","ssss"],
+["Staphylococcal disease — toxic shock syndrome","S",""],
+["Streptococcal disease (group A) — skin, wound or burn, major","DC",T24,"Until drainage stops or can be contained by dressing.","","gas strep"],
+["Streptococcal disease (group A) — skin, wound or burn, minor or limited","S","","If dressing covers and contains drainage.","","gas strep"],
+["Streptococcal disease (group A) — endometritis (puerperal sepsis)","S","","","","gas strep"],
+["Streptococcal disease (group A) — pharyngitis, infants and young children","D",T24,"","","gas strep throat"],
+["Streptococcal disease (group A) — pneumonia","D",T24,"","","gas strep"],
+["Streptococcal disease (group A) — scarlet fever, infants and young children","D",T24,"","","gas strep"],
+["Streptococcal disease (group A) — serious invasive disease","D",T24,"Outbreaks between patients and staff reported. Contact Precautions for draining wounds. Follow guidance on antimicrobial prophylaxis for selected conditions.","","gas strep necrotizing"],
+["Streptococcal disease (group B) — neonatal","S","","","","gbs strep"],
+["Streptococcal disease (not group A or B), multidrug-resistant","R","","See Multidrug-resistant organisms.","multidrug"],
+["Strongyloidiasis","S",""],
+["Syphilis — latent (tertiary) and seropositivity without lesions","S",""],
+["Syphilis — skin and mucous membrane (congenital, primary, secondary)","S",""],
+["Tapeworm — Hymenolepis nana","S","",NP],
+["Tapeworm — Taenia solium (pork)","S",""],
+["Tapeworm — other","S",""],
+["Tetanus","S","",NP],
+["Tinea (dermatophytosis, ringworm)","S","","Person-to-person transmission is rare.","","ringworm"],
+["Toxoplasmosis","S","","Person-to-person transmission is rare; vertical, transplant and transfusion transmission also rare."],
+["Toxic shock syndrome (staphylococcal or streptococcal)","S","","Droplet Precautions for the first 24 hours of antibiotics if group A Streptococcus is likely.","","tss"],
+["Trachoma, acute","S",""],
+["Transmissible spongiform encephalopathy","R","","See Creutzfeldt-Jakob disease.","creutzfeldt"],
+["Trench mouth (Vincent's angina)","S",""],
+["Trichinosis","S",""],
+["Trichomoniasis","S",""],
+["Trichuriasis (whipworm)","S",""],
+["Tuberculosis — extrapulmonary, draining lesion","AC","See comments","Discontinue when the patient is improving and drainage has stopped, or after 3 consecutive negative cultures of drainage. Examine for active pulmonary TB.","","tb"],
+["Tuberculosis — extrapulmonary, no draining lesion, meningitis","S","","Examine for evidence of pulmonary TB. For infants and children, Airborne Precautions until active pulmonary TB in visiting family members is ruled out.","","tb"],
+["Tuberculosis — pulmonary or laryngeal, confirmed","A","See comments","Discontinue only when on effective therapy, clinically improving, and 3 consecutive negative sputum smears collected on separate days.","","tb"],
+["Tuberculosis — pulmonary or laryngeal, suspected","A","See comments","Discontinue when infectious TB is considered negligible: another diagnosis explains the illness, or 3 negative AFB sputum smears collected 8–24 hours apart, at least one early morning.","","tb mdr xdr"],
+["Tuberculosis — skin-test positive, no active disease","S","","","","tb latent ltbi"],
+["Tularemia — draining lesion","S","",NP],
+["Tularemia — pulmonary","S","",NP],
+["Typhoid fever (Salmonella typhi)","R","","See Gastroenteritis.","salmonella"],
+["Typhus — Rickettsia prowazekii (epidemic, louse-borne)","S","","Spread through close personal or clothing contact."],
+["Typhus — Rickettsia typhi","S","",NP],
+["Urinary tract infection (incl. pyelonephritis), with or without catheter","S","","","","uti"],
+["Vaccinia (general)","X","","Only vaccinated staff should touch active vaccination sites or care for patients with adverse events; unvaccinated staff only if they have no contraindications to vaccine."],
+["Vaccinia — vaccination site care (incl. autoinoculated areas)","S","","Newly vaccinated staff cover the site with a semipermeable dressing over gauze until the scab separates. Use gloves and hand hygiene for dressing changes."],
+["Vaccinia adverse event — eczema vaccinatum","C","Until lesions dry and crusted, scabs separated","For contact with virus-containing lesions and exudate."],
+["Vaccinia adverse event — fetal vaccinia","C","Until lesions dry and crusted, scabs separated","For contact with virus-containing lesions and exudate."],
+["Vaccinia adverse event — generalized vaccinia","C","Until lesions dry and crusted, scabs separated","For contact with virus-containing lesions and exudate."],
+["Vaccinia adverse event — progressive vaccinia","C","Until lesions dry and crusted, scabs separated","For contact with virus-containing lesions and exudate."],
+["Vaccinia adverse event — postvaccinia encephalitis","S",""],
+["Vaccinia adverse event — blepharitis or conjunctivitis","S","","Use Contact Precautions if there is copious drainage."],
+["Vaccinia adverse event — iritis or keratitis","S",""],
+["Vaccinia adverse event — erythema multiforme (Stevens-Johnson)","S","","Not an infectious condition."],
+["Vaccinia adverse event — secondary bacterial infection","S","","Follow organism-specific recommendations and consider the amount of drainage."],
+["Varicella-zoster (chickenpox)","AC",LES,"Susceptible staff should not enter if immune caregivers are available; immune staff need no face protection. Varicella pneumonia in immunocompromised patients: precautions for the whole illness. Postexposure: vaccine within 120 hours, or VariZIG within 10 days if vaccine is contraindicated. Airborne Precautions for exposed susceptible persons; exclude exposed susceptible staff from day 8 to day 21 after last exposure (day 28 if VariZIG given).","","chickenpox vzv"],
+["Variola","R","","See Smallpox.","smallpox"],
+["Vibrio parahaemolyticus","R","","See Gastroenteritis.","gastroenteritis"],
+["Vincent's angina (trench mouth)","S",""],
+["Viral hemorrhagic fevers (Lassa, Marburg, Ebola, Crimean-Congo, South American)","X","Case-by-case, with local, state and federal health authorities (consider symptoms, when they resolved, other conditions, and lab results).","Use CDC's VHF PPE guidance: one set for clinically stable suspected patients, another for confirmed or clinically unstable patients. (Updated Sept 2024.)","","vhf ebola marburg lassa cchf crimean congo unknown etiology"],
+["Viral respiratory diseases (not covered elsewhere) — adults","S",""],
+["Viral respiratory diseases — infants and young children","R","","See Respiratory infectious disease — infants and young children.","respiratory infectious"],
+["Whooping cough","R","","See Pertussis.","pertussis"],
+["Wound infections — major","C",DOI,"Until drainage stops or can be contained by dressing."],
+["Wound infections — minor or limited","S","","If dressing covers and contains drainage."],
+["Yersinia enterocolitica gastroenteritis","R","","See Gastroenteritis.","gastroenteritis"],
+["Zika virus infection","S","","Standard Precautions for all patients; blood, vaginal secretions and semen have been implicated in transmission. No special room cleaning or equipment reprocessing. Report occupational exposures right away; wash skin with soap and water and flush mucous membranes.","","zikv mosquito arbovirus"],
+["Zoster (varicella-zoster)","R","","See Herpes zoster.","herpes zoster"],
+["Zygomycosis (phycomycosis, mucormycosis)","S","",NP]
+].map((r,i)=>({id:i,name:r[0],code:r[1],dur:r[2]||"",com:r[3]||"",see:r[4]||"",kw:r[5]||""}));
+
+const SRC = "https://www.cdc.gov/infection-control/hcp/isolation-precautions/appendix-a-type-duration.html";
+// Related CDC guidance cited inside specific Appendix A rows: [name prefix, label, url]
+const RELATED = [
+ ["Anthrax — environmental","Occupational health guidelines for remediation workers at B. anthracis sites (MMWR)","https://www.cdc.gov/mmwr/preview/mmwrhtml/mm5135a3.htm"],
+ ["Andes virus","CDC protective clothing guidance (NIOSH)","https://www.cdc.gov/niosh/npptl/topics/protectiveclothing/default.html"],
+ ["Gastroenteritis — norovirus","Guideline for the Prevention and Control of Norovirus Gastroenteritis Outbreaks in Healthcare Settings (2011)","https://www.cdc.gov/infectioncontrol/guidelines/norovirus/index.html"],
+ ["Influenza — human","Prevention Strategies for Seasonal Influenza in Healthcare Settings","https://www.cdc.gov/flu/professionals/infectioncontrol/healthcaresettings.htm"],
+ ["Influenza — avian","Interim guidance for novel influenza A viruses associated with severe disease","https://www.cdc.gov/flu/avianflu/novel-flu-infection-control.htm"],
+ ["Influenza — pandemic","Interim guidance for novel influenza A viruses associated with severe disease","https://www.cdc.gov/flu/avianflu/novel-flu-infection-control.htm"],
+ ["Lice","CDC Parasites: Lice","https://www.cdc.gov/parasites/lice/index.html"],
+ ["Pediculosis","CDC Parasites: Lice","https://www.cdc.gov/parasites/lice/index.html"],
+ ["Measles","Interim Infection Prevention and Control Recommendations for Measles in Healthcare Settings","https://www.cdc.gov/infectioncontrol/guidelines/measles/index.html"],
+ ["Monkeypox","CDC mpox infection prevention and control in healthcare settings","https://www.cdc.gov/poxvirus/monkeypox/clinicians/infection-control-healthcare.html"],
+ ["Multidrug-resistant","Management of Multidrug-Resistant Organisms in Healthcare Settings (2006)","https://www.cdc.gov/infectioncontrol/guidelines/mdro/index.html"],
+ ["Mumps","Updated Recommendations for Isolation of Persons with Mumps (MMWR 2008)","https://www.cdc.gov/mmwr/preview/mmwrhtml/mm5740a3.htm"],
+ ["Nipah virus","PPE for confirmed and clinically unstable suspected VHF patients","https://www.cdc.gov/viral-hemorrhagic-fevers/hcp/guidance/ppe-clinically-unstable.html"],
+ ["Viral hemorrhagic fevers","PPE for confirmed and clinically unstable suspected VHF patients","https://www.cdc.gov/viral-hemorrhagic-fevers/hcp/guidance/ppe-clinically-unstable.html"],
+ ["Pertussis","Tdap / Td ACIP vaccine recommendations","https://www.cdc.gov/vaccines/hcp/acip-recs/vacc-specific/dtap.html"],
+ ["Respiratory infectious disease, acute (not covered elsewhere) — adults","Preventing Spread of Respiratory Viruses When You're Sick","https://www.cdc.gov/respiratory-viruses/prevention/precautions-when-sick.html"]
+];
+// Conditions not in Appendix A: their own CDC source replaces the Appendix A section link
+const EXTRA = {
+ "Candida auris":["Infection Control Guidance: Candida auris (CDC, updated Sept 30, 2026)","https://www.cdc.gov/candida-auris/hcp/infection-control/index.html"],
+ "Middle East respiratory":["Prevention and Control for Hospitalized MERS Patients (CDC)","https://www.cdc.gov/mers/hcp/infection-control/index.html"],
+ "Mpox":["Infection Prevention and Control of Mpox in Healthcare Settings (CDC)","https://www.cdc.gov/mpox/hcp/infection-control/healthcare-settings.html"],
+ "Novel influenza A":["Interim Guidance for Infection Control When Caring for Patients with Novel Influenza A Viruses Associated with Severe Disease (CDC)","https://www.cdc.gov/bird-flu/hcp/novel-flu-infection-control/"],
+ "Rift Valley":["Rift Valley fever fact sheet (WHO)","https://www.who.int/news-room/fact-sheets/detail/rift-valley-fever"],
+ "Alkhurma":["Alkhumra virus: Pathogen Safety Data Sheet (Public Health Agency of Canada, 2023)","https://www.canada.ca/en/public-health/services/laboratory-biosafety-biosecurity/pathogen-safety-data-sheets-risk-assessment/alkhumra-virus.html"],
+ "Zika":["Healthcare Exposure to Zika and Infection Control (CDC)","https://www.cdc.gov/zika/hc-providers/infection-control.html"],
+ "Chikungunya":["Treatment and Prevention of Chikungunya Virus Disease (CDC)","https://www.cdc.gov/chikungunya/hcp/treatment-prevention/index.html"]
+};
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+DATA.forEach(d=>{d.hay=" "+norm(d.name+" "+d.kw)+" ";});
+
+const $q=document.getElementById("q"), $list=document.getElementById("list"), $count=document.getElementById("count"), $clear=document.getElementById("clear");
+let filter="all"; const open=new Set();
+
+function codes(code){ if(code==="R"||code==="X"||code==="S") return [code]; return code.split(""); }
+function badges(code){
+  if(code==="R") return '<span class="badge b-R">See linked entry</span>';
+  if(code==="X") return '<span class="badge b-X">Special — see comments</span>';
+  if(code==="S") return '<span class="badge b-S">Standard</span>';
+  const order=["A","D","C"]; return order.filter(c=>code.includes(c)).map(c=>`<span class="badge b-${c}">${ROUTE[c].label}</span>`).join("")+'<span class="plus">+ Standard</span>';
+}
+function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function refBlock(d){
+  const L=d.name[0].toUpperCase();
+  const rel=RELATED.filter(r=>d.name.startsWith(r[0]));
+  const ex=Object.keys(EXTRA).find(k=>d.name.startsWith(k));
+  if(ex) return `<div class="ref"><h3>Reference</h3><ul>
+    <li><a href="${EXTRA[ex][1]}" target="_blank" rel="noopener">${esc(EXTRA[ex][0])}</a> <span>Not listed in CDC Appendix A; added from this separate guidance</span></li></ul></div>`;
+  return `<div class="ref"><h3>Reference</h3><ul>
+    <li><a href="${SRC}#${L}" target="_blank" rel="noopener">CDC Appendix A, section ${L}</a> <span>Type and Duration of Precautions Recommended for Selected Infections and Conditions (Guideline for Isolation Precautions, 2007; page updated Sept 11, 2026)</span></li>
+    ${rel.map(r=>`<li><a href="${r[2]}" target="_blank" rel="noopener">${esc(r[1])}</a> <span>CDC guidance cited in this row</span></li>`).join("")}
+  </ul></div>`;
+}
+function matches(d,terms){ return terms.every(t=>d.hay.includes(" "+t)); }
+function passFilter(d){ if(filter==="all") return true; if(filter==="S") return d.code==="S"; return d.code.includes(filter)&&d.code!=="R"; }
+
+function render(){
+  const terms=norm($q.value).split(" ").filter(Boolean);
+  $clear.hidden=!$q.value;
+  const rows=DATA.filter(d=>passFilter(d)&&matches(d,terms));
+  $count.textContent = rows.length===DATA.length ? `${rows.length} conditions` : `${rows.length} of ${DATA.length} conditions`;
+  if(!rows.length){ $list.innerHTML=`<div class="empty">No condition matches “${esc($q.value)}”${filter!=="all"?" with this filter":""}. Try the organism name, a common name (e.g. “TB”, “shingles”), or clear the filter.</div>`; return; }
+  let html="", last="";
+  const showLetters = !terms.length;
+  for(const d of rows){
+    const L=d.name[0].toUpperCase();
+    if(showLetters && L!==last){ html+=`<div class="letter" aria-hidden="true">${L}</div>`; last=L; }
+    const isOpen=open.has(d.id);
+    const dur = d.code==="R" ? "" : `<div class="dur">Duration: <b>${esc(d.dur||"n/a")}</b></div>`;
+    let detail="";
+    if(isOpen){
+      const r = codes(d.code).concat(/[ADC]/.test(d.code)?["S"]:[]);
+      detail = `<div class="detail" id="det-${d.id}">
+        ${d.com?`<div><h3>CDC comments</h3><p>${esc(d.com)}</p></div>`:""}
+        ${d.see?`<button class="see" data-see="${esc(d.see)}">Show “${esc(d.see)}” entries →</button>`:""}
+        ${rrtLinks(d)}
+        ${refBlock(d)}
+        <div><h3>How it spreads / what to use</h3><ul class="routes">${r.map(c=>`<li><span class="badge b-${c}">${ROUTE[c].label}</span><span>${ROUTE[c].how.split(": ").slice(1).join(": ")}</span></li>`).join("")}</ul></div>
+      </div>`;
+    }
+    html+=`<div class="card${isOpen?" open":""}"><button data-id="${d.id}" aria-expanded="${isOpen}" aria-controls="det-${d.id}">
+      <span class="name">${esc(d.name)}</span><span class="chev" aria-hidden="true">›</span>
+      <span class="meta">${badges(d.code)}</span>${dur}</button>${detail}</div>`;
+  }
+  $list.innerHTML=html;
+}
+
+$list.addEventListener("click",e=>{
+  const x=e.target.closest(".xlink[data-rrt]");
+  if(x){ openRRT(x.dataset.rrt); return; }
+  const s=e.target.closest(".see");
+  if(s){ $q.value=s.dataset.see; setFilter("all"); open.clear(); render(); window.scrollTo({top:0}); return; }
+  const b=e.target.closest("button[data-id]"); if(!b) return;
+  const id=+b.dataset.id; open.has(id)?open.delete(id):open.add(id); render();
+  const el=$list.querySelector(`button[data-id="${id}"]`); el&&el.focus({preventScroll:true});
+});
+function setFilter(f){ filter=f; document.querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",c.dataset.f===f)); }
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{setFilter(c.dataset.f);render();}));
+$q.addEventListener("input",render);
+$clear.addEventListener("click",()=>{$q.value="";render();$q.focus();});
+document.getElementById("legend").innerHTML=["A","D","C","S","X"].map(c=>`<li><span class="badge b-${c}">${ROUTE[c].label}</span><span>${ROUTE[c].how.split(": ").slice(1).join(": ")}</span></li>`).join("");
+// ================= PART 2: IPC RRT ACTIVATION PATHWAY =================
+// Lists, indicators and pathway logic carried over unchanged from IPC_RRT_ACTIVATION_PATHWAY_TOOL.html
+
+// Group A: تُدرج ضمن المسار المباشر عند التأكيد، وضمن مسار "عن بُعد" عند الاشتباه
+const groupA = [
+  {id:"lassa", name:"حمى لاسا (Lassa Fever)", remote:true},
+  {id:"marburg", name:"مرض فيروس ماربورغ (Marburg Virus Disease)", remote:true},
+  {id:"ebola", name:"مرض فيروس إيبولا (EVD)", remote:true},
+  {id:"plague_p", name:"الطاعون الرئوي (Plague – Pneumonic)", remote:true},
+  {id:"nipah", name:"عدوى فيروس نيباه (Nipah Virus Infection)", remote:true},
+  {id:"cchf", name:"حمى القرم والكونغو النزفية (CCHF)", remote:true},
+  {id:"smallpox", name:"الجدري (Smallpox / Variola)", remote:true},
+  {id:"plague_b", name:"الطاعون الدبلي (Plague – Bubonic)", remote:true},
+  {id:"avian_flu", name:"إنفلونزا الطيور A (H5N1/H7N9)", remote:true},
+  {id:"mers", name:"متلازمة الشرق الأوسط التنفسية (MERS-CoV)", remote:false},
+  {id:"novel_flu", name:"إنفلونزا مستجدة (Novel Influenza)", remote:true},
+  {id:"hantavirus", name:"متلازمة هانتا فيروس الرئوية (Hantavirus Pulmonary Syndrome)", remote:true},
+];
+// حالة خاصة: تُدرج فقط ضمن مسار "عن بُعد" عند الاشتباه (سبب غير معروف)
+const remoteOnly = [
+  {id:"vhf_unknown", name:"حمى نزفية فيروسية مجهولة السبب (Viral Hemorrhagic Fever – Unknown Etiology)"}
+];
+// Group B: تُدرج ضمن المسار المشروط عند التأكيد + وجود مؤشر تصعيد واحد على الأقل
+const groupB = [
+  {id:"anthrax", name:"الجمرة الخبيثة (Anthrax)"},
+  {id:"covid", name:"كوفيد-19 (COVID-19 / SARS-CoV-2)"},
+  {id:"sars", name:"المتلازمة التنفسية الحادة الوخيمة (SARS)"},
+  {id:"dengue", name:"حمى الضنك (Dengue Virus Infection)"},
+  {id:"rvf", name:"حمى الوادي المتصدع (Rift Valley Fever)"},
+  {id:"tb", name:"السل المقاوم للأدوية (MDR-TB / XDR-TB)"},
+  {id:"yellow", name:"الحمى الصفراء (Yellow Fever)"},
+  {id:"measles", name:"الحصبة (Measles / Rubeola)"},
+  {id:"arboviral", name:"عدوى فيروسية منقولة بالمفصليات (فيروس غرب النيل أو غير محددة)"},
+  {id:"diphtheria", name:"الدفتيريا (Diphtheria)"},
+  {id:"alkhurma", name:"حمى الخرمة النزفية (Alkhurma Hemorrhagic Fever)"},
+  {id:"zika", name:"عدوى فيروس زيكا (Zika Virus Infection)"},
+  {id:"mpox_1b", name:"جدري القردة – السلالة Clade Ib (Mpox Clade Ib)"},
+  {id:"mpox", name:"جدري القردة (Mpox)"},
+  {id:"chikungunya", name:"عدوى فيروس شيكونغونيا (Chikungunya)"},
+];
+const indicators = [
+  {id:"delay", text:"تأخر اكتشاف الحالة أو تطبيق العزل والاحتياطات المطلوبة"},
+  {id:"exposure", text:"حدوث مخالطة أو تعرّض غير محمي أو عالي الخطورة داخل المنشأة الصحية (يشمل تعرض المرضى أو الممارسين الصحيين قبل عزل الحالة)"},
+  {id:"dept", text:"وجود الحالة أو التعرّضات المرتبطة بها في قسم عالي الخطورة"},
+  {id:"ica", text:"ضعف جاهزية برنامج مكافحة العدوى — عدم تحديث بيانات التقييم الذاتي، أو انخفاض نتيجة التقييم الإشرافي (ICA) عن 85٪"},
+  {id:"aerosol", text:"تنفيذ إجراء مولّد للرذاذ مرتبط بالحالة دون الاستخدام الصحيح لمعدات الوقاية الشخصية"},
+  {id:"containment", text:"وجود قصور في تطبيق تدابير الاحتواء، أو عدم قدرة المنشأة على إدارة الحدث بكفاءة"},
+  {id:"support", text:"الحاجة إلى دعم فني عاجل أو تقييم ميداني بناءً على نتائج تقييم المخاطر"},
+];
+const allDiseases = [
+  ...groupA.map(d=>({...d, group:"A"})),
+  ...remoteOnly.map(d=>({...d, group:"remoteOnly"})),
+  ...groupB.map(d=>({...d, group:"B"})),
+].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+
+// Link each RRT disease to its Part 1 isolation entries (p = name prefixes, q = search used when jumping)
+const VHF={p:["Viral hemorrhagic fevers","Ebola virus","Lassa fever","Marburg virus","Crimean-Congo"],q:"viral hemorrhagic"};
+const RRT_ISO = {
+  lassa:VHF, marburg:VHF, ebola:VHF, cchf:VHF, vhf_unknown:VHF,
+  plague_p:{p:["Plague (Yersinia pestis) — pneumonic"],q:"plague"},
+  plague_b:{p:["Plague (Yersinia pestis) — bubonic"],q:"plague"},
+  nipah:{p:["Nipah virus"],q:"nipah"},
+  smallpox:{p:["Smallpox","Variola"],q:"smallpox"},
+  avian_flu:{p:["Novel influenza A"],q:"novel influenza"},
+  novel_flu:{p:["Novel influenza A","Influenza — pandemic"],q:"influenza"},
+  mers:{p:["Middle East respiratory"],q:"mers"},
+  hantavirus:{p:["Hantavirus","Andes virus"],q:"hantavirus"},
+  anthrax:{p:["Anthrax"],q:"anthrax"},
+  covid:{p:["Respiratory infectious disease, acute (not covered elsewhere) — adults"],q:"covid"},
+  sars:{p:["Severe acute respiratory"],q:"severe acute"},
+  dengue:{p:["Dengue","Arthropod-borne"],q:"dengue"},
+  rvf:{p:["Rift Valley"],q:"rift valley"},
+  tb:{p:["Tuberculosis — pulmonary or laryngeal","Tuberculosis — extrapulmonary, draining"],q:"tuberculosis"},
+  yellow:{p:["Arthropod-borne"],q:"yellow fever"},
+  measles:{p:["Measles","Rubeola"],q:"measles"},
+  arboviral:{p:["Arthropod-borne"],q:"west nile"},
+  diphtheria:{p:["Diphtheria"],q:"diphtheria"},
+  alkhurma:{p:["Alkhurma"],q:"alkhurma"},
+  zika:{p:["Zika"],q:"zika"},
+  mpox_1b:{p:["Mpox"],q:"mpox"}, mpox:{p:["Mpox"],q:"mpox"},
+  chikungunya:{p:["Chikungunya"],q:"chikungunya"}
+};
+const isoFor = rid => DATA.filter(d=>RRT_ISO[rid].p.some(x=>d.name.startsWith(x)));
+const rrtFor = d => allDiseases.filter(r=>RRT_ISO[r.id] && RRT_ISO[r.id].p.some(x=>d.name.startsWith(x)));
+function rrtLinks(d){
+  const rs_=rrtFor(d); if(!rs_.length) return "";
+  return `${NOTE_HTML}<div><h3>IPC RRT activation pathway</h3><div style="display:flex;flex-wrap:wrap;gap:6px">${rs_.map(r=>`<button class="xlink" data-rrt="${r.id}"><span lang="ar" dir="rtl">${esc(r.name)}</span> →</button>`).join("")}</div></div>`;
+}
+
+let rs = {step:1, disease:null, status:null, checks:{}, showResult:false};
+const $rApp=document.getElementById("rrtApp"), $rProg=document.getElementById("rrtProgress");
+function rNeedsChecklist(){ return !!(rs.disease && rs.disease.group==="B" && rs.status==="confirmed"); }
+
+function rrtRender(){
+  $rProg.innerHTML=[1,2,3].map(i=>`<span class="${rs.step>=i?'done':''}"></span>`).join('');
+  $rApp.innerHTML = rs.step===1 ? rStep1() : rs.step===2 ? rStep2() : rStep3();
+}
+function rStep1(){
+  const items = allDiseases.map(d=>{
+    const sel = rs.disease && rs.disease.id===d.id ? 'sel':'';
+    const tag = d.group==="A" ? "مباشر / عن بُعد" : d.group==="B" ? "مشروط" : "عن بُعد فقط";
+    return `<button class="r-opt ${sel}" data-id="${d.id}"><span>${d.name}</span><span class="r-tag">${tag}</span></button>`;
+  }).join('');
+  return `<div class="rcard">
+    <div class="r-label">الخطوة ١ من ٣</div>
+    <h2 class="r-title">اختر المرض</h2>
+    <p class="r-hint">ابحث عن اسم المرض بالعربية أو الإنجليزية أو مرّر القائمة لاختياره.</p>
+    <label for="rSearch" hidden>ابحث عن المرض</label>
+    <input class="r-search" id="rSearch" type="search" placeholder="اكتب اسم المرض..." autocomplete="off">
+    <div class="r-list" id="rList">${items}</div>
+  </div>`;
+}
+function rStep2(){
+  const d = rs.disease;
+  const canSuspect = d.group==="A" ? d.remote : (d.group==="remoteOnly");
+  const canConfirm = d.group==="A" || d.group==="B";
+  return `<div class="rcard">
+    <div class="r-label">الخطوة ٢ من ٣</div>
+    <h2 class="r-title">${d.name}</h2>
+    <p class="r-hint">ما حالة التصنيف الحالية لهذه الحالة؟</p>
+    <div class="r-choices">
+      <button class="r-choice ${rs.status==='suspected'?'sel':''}" data-status="suspected" ${canSuspect?'':'disabled'} aria-pressed="${rs.status==='suspected'}">مشتبهة<small>لم تُؤكد مخبريًا بعد</small></button>
+      <button class="r-choice ${rs.status==='confirmed'?'sel':''}" data-status="confirmed" ${canConfirm?'':'disabled'} aria-pressed="${rs.status==='confirmed'}">مؤكدة<small>تم تأكيد التشخيص</small></button>
+    </div>
+    <div class="r-nav">
+      <button class="r-btn" data-act="back">رجوع</button>
+      <button class="r-btn pri" data-act="next" ${rs.status?'':'disabled'}>متابعة</button>
+    </div>
+  </div>`;
+}
+function rStep3(){
+  if(rNeedsChecklist()){
+    indicators.forEach(i=>{ if(!(i.id in rs.checks)) rs.checks[i.id]=false; });
+    const rows = indicators.map(i=>{
+      const on = rs.checks[i.id];
+      return `<label class="r-check ${on?'on':''}" for="ind-${i.id}"><input type="checkbox" id="ind-${i.id}" data-ind="${i.id}" ${on?'checked':''}><span>${i.text}</span></label>`;
+    }).join('');
+    return `<div class="rcard">
+      <div class="r-label">الخطوة ٣ من ٣</div>
+      <h2 class="r-title">مؤشرات التصعيد</h2>
+      <p class="r-hint">هذا المرض مؤكد ويندرج ضمن مسار "التفعيل المشروط". حدّد أي مؤشرات تصعيد متحققة حاليًا:</p>
+      <div class="r-checks">${rows}</div>
+      <div class="r-nav">
+        <button class="r-btn" data-act="back">رجوع</button>
+        <button class="r-btn pri" data-act="result">عرض النتيجة</button>
+      </div>
+    </div>
+    ${rs.showResult ? rResultCard() + rIsoCard() + rEndNav() : ""}`;
+  }
+  return `${rResultCard()}${rIsoCard()}${rEndNav()}`;
+}
+function rEndNav(){
+  return `<div class="r-nav">
+    <button class="r-btn" data-act="back" style="flex:1">تعديل الاختيار</button>
+    <button class="r-btn pri" data-act="reset" style="flex:1">حالة جديدة</button>
+  </div>`;
+}
+function computeResult(){
+  const d = rs.disease;
+  if(!d) return null;
+  if(d.group==="A" && rs.status==="confirmed"){
+    return {type:"direct", title:"التفعيل المباشر",
+      desc:"يُفعَّل فريق الاستجابة السريعة لمكافحة العدوى فور تأكيد هذه الحالة، دون اشتراط تحقق مؤشرات تصعيد إضافية. يبدأ التفعيل بالتنسيق الفوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع.",
+      chips:["تنسيق فوري","بدون اشتراط مؤشرات إضافية","نطاق يُحدَّد وفق تقييم المخاطر"],
+      actions:["تنسيق فوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع","التحقق من تطبيق تدابير العزل والاحتواء","تقييم التعرضات المحتملة","تحديد الدعم المطلوب ونطاق التدخل الميداني","تحديد نطاق التدخل والمشاركة وفق نتائج تقييم المخاطر وتوجيه المقر الرئيسي"]};
+  }
+  if(d.group==="A" && rs.status==="suspected" && d.remote){
+    return {type:"remote", title:"التفعيل عن بُعد",
+      desc:"يُفعَّل الفريق عن بُعد عند الإبلاغ عن حالة مشتبهة لإجراء تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة، والتحقق من تطبيق تدابير العزل والاحتواء. يستمر هذا المسار حتى استبعاد الحالة أو تأكيدها والانتقال إلى مسارها المحدد، أو صدور توجيه آخر من المقر الرئيسي.",
+      chips:["تقييم عاجل عن بُعد","يستمر حتى الاستبعاد أو التأكيد"],
+      actions:["تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة الصحية","التحقق من تطبيق تدابير العزل والاحتواء","مراجعة التعرضات المحتملة وجاهزية المنشأة","تحديد الحاجة إلى تدخل ميداني أو تصعيد مسار التفعيل"]};
+  }
+  if(d.group==="remoteOnly" && rs.status==="suspected"){
+    return {type:"remote", title:"التفعيل عن بُعد",
+      desc:"تندرج الحمى النزفية الفيروسية مجهولة السبب ضمن مسار التفعيل عن بُعد عند الاشتباه. يستمر التفعيل حتى استبعاد الحالة، أو تحديد المسبب وتأكيد التشخيص والانتقال إلى مساره المحدد.",
+      chips:["تقييم عاجل عن بُعد","بانتظار تحديد المسبب"],
+      actions:["تقييم عاجل بالتنسيق مع الفرع/المكتب والمنشأة الصحية","التحقق من تطبيق تدابير العزل والاحتواء","متابعة نتائج التحاليل لتحديد المسبب","بمجرد تحديد المسبب، إعادة تصنيف الحالة باسمها المؤكد لتحديد المسار الصحيح"]};
+  }
+  if(d.group==="B" && rs.status==="confirmed"){
+    const checkedList = indicators.filter(i=>rs.checks[i.id]);
+    if(checkedList.length>0){
+      return {type:"direct", title:"التفعيل المباشر",
+        desc:"الحالة مؤكدة وتحقق مؤشر تصعيد واحد أو أكثر، وهو ما يستوجب التفعيل المشروط للفريق. يبدأ التفعيل بالتنسيق الفوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع.",
+        chips: checkedList.map(i=>"✓ "+i.text.split("—")[0].split("،")[0].trim()),
+        actions:["تنسيق فوري مع الفرع/المكتب والمنشأة الصحية لتقييم الوضع","التحقق من تطبيق تدابير العزل والاحتواء","مراجعة حجم التعرضات وقدرة المنشأة على إدارة الحدث","تحديد الدعم الفني أو التدخل الميداني اللازم بناءً على المؤشر(ات) المتحققة"]};
+    }
+    return {type:"remote", title:"التفعيل عن بُعد",
+      desc:"الحالة مؤكدة، ولم يتحقق أي مؤشر تصعيد من المؤشرات المعتمدة حتى الآن. يُفعَّل الفريق عن بُعد لإجراء تقييم أولي والتحقق من تدابير العزل والاحتواء، مع استمرار متابعة المؤشرات وإعادة التقييم إذا تغيرت المعطيات.",
+      chips:["تقييم أولي عن بُعد","إعادة التقييم عند تغيّر المعطيات"],
+      actions:["تنسيق عن بُعد مع الفرع/المكتب والمنشأة الصحية للتحقق من الوضع","التحقق من تطبيق تدابير العزل والاحتواء","متابعة مؤشرات التصعيد وإعادة التقييم إذا تغيرت المعطيات الميدانية","التصعيد إلى المسار المشروط فور تحقق أي مؤشر تصعيد"]};
+  }
+  return {type:"none", title:"غير مدرج ضمن مسارات التفعيل الثلاثة بهذه الحالة",
+    desc:"هذا المرض في حالته المشتبهة غير مدرج ضمن قوائم التفعيل المباشر أو عن بُعد أو المشروط. يُتابع وفق آليات الترصد الوبائي الاعتيادية، ويُعاد التقييم فور تأكيد التشخيص مخبريًا.",
+    chips:["يتبع الترصد الاعتيادي","أعد التقييم عند التأكيد"],
+    actions:["المتابعة عبر آليات الترصد الوبائي الاعتيادية","إعادة الاختيار كـ«مؤكدة» فور تأكيد التشخيص مخبريًا لتحديد المسار الصحيح"]};
+}
+function rResultCard(){
+  const r = computeResult(); if(!r) return "";
+  const badge = r.type==='direct'?'مباشر':r.type==='remote'?'عن بُعد':'بدون تفعيل';
+  return `<div class="rcard res-${r.type}" id="rResult">
+    <span class="r-badge">${badge}</span>
+    <h2 class="r-res-title">${r.title}</h2>
+    <p class="r-desc">${r.desc}</p>
+    ${r.chips&&r.chips.length?`<div class="r-chips">${r.chips.map(c=>`<span class="r-chip">${c}</span>`).join('')}</div>`:''}
+    <ul class="r-actions">${r.actions.map(a=>`<li>${a}</li>`).join('')}</ul>
+  </div>
+  <div class="rcard"><div class="notify" dir="rtl"><span class="ic" aria-hidden="true">!</span><span lang="ar" style="margin:0">${NOTE_AR}</span></div></div>`;
+}
+function rIsoCard(){
+  const d=rs.disease; if(!d||!RRT_ISO[d.id]) return "";
+  const items=isoFor(d.id).filter(e=>e.code!=="R");
+  if(!items.length) return "";
+  return `<div class="rcard r-iso">
+    <h3>احتياطات العزل الموصى بها</h3>
+    ${items.map(e=>`<div class="r-iso-item"><span class="nm">${esc(e.name)}</span><span class="meta">${badges(e.code)}</span>${e.code==="R"?"":`<span class="d">Duration: ${esc(e.dur||"n/a")}</span>`}</div>`).join("")}
+    <div class="r-nav"><button class="xlink" data-act="iso">عرض التفاصيل والمراجع في الجزء ١ ←</button></div>
+  </div>`;
+}
+
+$rApp.addEventListener("click",e=>{
+  const opt=e.target.closest(".r-opt");
+  if(opt){ rs.disease=allDiseases.find(d=>d.id===opt.dataset.id); rs.status=null; rs.checks={}; rs.showResult=false; rs.step=2; rrtRender(); focusFirst(".r-choice:not(:disabled)"); remindFor([rs.disease.id]); return; }
+  const ch=e.target.closest(".r-choice");
+  if(ch&&!ch.disabled){ rs.status=ch.dataset.status; rrtRender(); focusFirst(`.r-choice[data-status="${rs.status}"]`); return; }
+  const b=e.target.closest("[data-act]"); if(!b) return;
+  const a=b.dataset.act;
+  if(a==="back"){ rs.step = rs.step===3 ? 2 : 1; rs.showResult=false; rrtRender(); }
+  else if(a==="next"){ rs.step=3; rs.showResult=false; rrtRender(); }
+  else if(a==="result"){ rs.showResult=true; rrtRender(); const c=document.getElementById("rResult"); if(c) c.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"}); }
+  else if(a==="reset"){ rs={step:1,disease:null,status:null,checks:{},showResult:false}; rrtRender(); }
+  else if(a==="iso"){ showInFinder(rs.disease.id); }
+});
+$rApp.addEventListener("change",e=>{
+  const id=e.target.dataset&&e.target.dataset.ind; if(!id) return;
+  rs.checks[id]=e.target.checked; rs.showResult=false; rrtRender(); focusFirst(`#ind-${id}`);
+});
+$rApp.addEventListener("input",e=>{
+  if(e.target.id!=="rSearch") return;
+  const q=e.target.value.trim().toLowerCase();
+  document.querySelectorAll("#rList .r-opt").forEach(el=>{ el.hidden = !el.firstElementChild.textContent.toLowerCase().includes(q); });
+});
+function focusFirst(sel){ const el=$rApp.querySelector(sel); if(el) el.focus({preventScroll:true}); }
+
+// ---------- tabs & cross-links ----------
+function setTab(t){
+  document.getElementById("tab-iso").hidden = t!=="iso";
+  document.getElementById("tab-rrt").hidden = t!=="rrt";
+  document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===t));
+  try{ history.replaceState(null,"",t==="rrt"?"#rrt":"#isolation"); }catch(_){}
+}
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
+function openRRT(rid){
+  rs={step:2, disease:allDiseases.find(d=>d.id===rid), status:null, checks:{}, showResult:false};
+  setTab("rrt"); rrtRender(); window.scrollTo({top:0}); focusFirst(".r-choice:not(:disabled)");
+}
+function showInFinder(rid){
+  const m=RRT_ISO[rid]; setTab("iso"); setFilter("all"); $q.value=m.q; open.clear();
+  isoFor(rid).forEach(e=>open.add(e.id)); render(); window.scrollTo({top:0});
+}
+
+// ---------- notification reminder (RRT-listed diseases) ----------
+const NOTE_EN = "Notify your facility's Infection Control Department and the IPC Rapid Response Team (RRT) at Weqaya.";
+const NOTE_AR = "يجب إبلاغ قسم مكافحة العدوى في المنشأة وفريق الاستجابة السريعة لمكافحة العدوى (RRT) في وقاية.";
+const NOTE_HTML = `<div class="notify" role="note"><span class="ic" aria-hidden="true">!</span><span><b>Notify:</b> ${NOTE_EN}<span lang="ar" dir="rtl">${NOTE_AR}</span></span></div>`;
+const reminded = new Set();   // RRT ids already shown this visit
+let modalOpen=false, lastFocus=null, searchTimer=null;
+function remindFor(rids){
+  const fresh=[...new Set(rids)].filter(id=>!reminded.has(id));
+  if(!fresh.length || modalOpen) return;
+  fresh.forEach(id=>reminded.add(id));
+  showReminder(fresh.map(id=>allDiseases.find(d=>d.id===id)).filter(Boolean));
+}
+function showReminder(list){
+  modalOpen=true; lastFocus=document.activeElement;
+  const bg=document.createElement("div"); bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="mTitle" aria-describedby="mBody">
+    <div class="m-ic" aria-hidden="true">!</div>
+    <h2 id="mTitle">Notification required</h2>
+    <p id="mBody">${NOTE_EN}</p>
+    <div class="ar" lang="ar"><h2>تنبيه: يلزم الإبلاغ</h2><p>${NOTE_AR}</p>
+      <ul>${list.map(d=>`<li>${d.name}</li>`).join("")}</ul></div>
+    <button class="ok" id="mOk">Got it · تم</button>
+  </div>`;
+  document.body.appendChild(bg);
+  const close=()=>{ bg.remove(); modalOpen=false; document.removeEventListener("keydown",onKey); if(lastFocus&&lastFocus.focus) lastFocus.focus({preventScroll:true}); };
+  const onKey=e=>{ if(e.key==="Escape"||e.key==="Tab"){ if(e.key==="Escape") close(); else { e.preventDefault(); bg.querySelector("#mOk").focus(); } } };
+  bg.querySelector("#mOk").addEventListener("click",close);
+  bg.addEventListener("click",e=>{ if(e.target===bg) close(); });
+  document.addEventListener("keydown",onKey);
+  bg.querySelector("#mOk").focus();
+}
+// Part 1: remind when a search settles on RRT-listed diseases, or one is opened
+$q.addEventListener("input",()=>{
+  clearTimeout(searchTimer);
+  const terms=norm($q.value).split(" ").filter(Boolean);
+  if(terms.join("").length<3) return;
+  searchTimer=setTimeout(()=>{
+    const hits=DATA.filter(d=>passFilter(d)&&matches(d,terms));
+    if(hits.length>15) return;   // too broad to be a real disease search
+    remindFor(hits.flatMap(d=>rrtFor(d).map(r=>r.id)));
+  },700);
+});
+$list.addEventListener("click",e=>{
+  const b=e.target.closest("button[data-id]"); if(!b) return;
+  const d=DATA[+b.dataset.id]; if(d && open.has(d.id)) remindFor(rrtFor(d).map(r=>r.id));
+});
+document.getElementById("rrtApp").addEventListener("input",e=>{
+  if(e.target.id!=="rSearch") return;
+  clearTimeout(searchTimer);
+  const q=e.target.value.trim().toLowerCase(); if(q.length<3) return;
+  searchTimer=setTimeout(()=>{
+    const hits=allDiseases.filter(d=>d.name.toLowerCase().includes(q));
+    if(hits.length && hits.length<=5) remindFor(hits.map(d=>d.id));
+  },700);
+});
+
+// open one example so the first view shows what a result looks like
+const ex=DATA.find(d=>d.name.startsWith("Measles")); if(ex) open.add(ex.id);
+render();
+rrtRender();
+if(location.hash==="#rrt") setTab("rrt");
+</script>
+
+</body></html>
